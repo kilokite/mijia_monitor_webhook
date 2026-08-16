@@ -77,6 +77,9 @@ class _DeviceState:
     parser: XiaomiBluetoothDeviceData
     product_id: int
     model: str
+    temperature: float | None = None
+    humidity: float | None = None
+    battery: float | None = None
     last_measurement: tuple[float | None, float | None, float | None] | None = None
     encryption_notice_sent: bool = False
 
@@ -264,14 +267,17 @@ class MijiaCollector:
                 )
             state.encryption_notice_sent = True
 
-        temperature = _number_or_none(values.get("temperature"))
-        humidity = _number_or_none(values.get("humidity"))
-        battery = _number_or_none(values.get("battery"))
+        if "temperature" in values:
+            state.temperature = _number_or_none(values["temperature"])
+        if "humidity" in values:
+            state.humidity = _number_or_none(values["humidity"])
+        if "battery" in values:
+            state.battery = _number_or_none(values["battery"])
         rssi = _number_or_none(values.get("signal_strength"))
-        if temperature is None and humidity is None:
+        if state.temperature is None and state.humidity is None:
             return None
 
-        measurement = (temperature, humidity, battery)
+        measurement = (state.temperature, state.humidity, state.battery)
         if measurement == state.last_measurement:
             return None
         state.last_measurement = measurement
@@ -281,9 +287,9 @@ class MijiaCollector:
             address=address,
             model=state.model,
             product_id=f"0x{state.product_id:04X}",
-            temperature=temperature,
-            humidity=humidity,
-            battery=battery,
+            temperature=state.temperature,
+            humidity=state.humidity,
+            battery=state.battery,
             rssi=rssi,
         )
 

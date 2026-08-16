@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>温度湿度</title>
+  <style>
+    :root {
+      --ink: #111;
+      --paper: #fff;
+      --muted: #707070;
+      --line: #d8d8d8;
+      --soft: #f6f6f6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 15px/1.5 Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    button, input, select { font: inherit; }
+
+    .page {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding: 0 28px 64px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: 56px;
+      border-bottom: 1px solid var(--ink);
+      padding: 18px 0 14px;
+    }
+
+    h2, p { margin: 0; }
+    h2 { font-size: 14px; font-weight: 600; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      background: var(--paper);
+    }
+
+    .status-dot.online { background: var(--ink); }
+    .status-dot.refreshing {
+      background: var(--ink);
+      animation: status-pulse .8s ease-in-out infinite;
+    }
+
+    @keyframes status-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .25; }
+    }
+
+    .live {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .primary-reading {
+      min-height: 240px;
+      padding: 38px 0;
+    }
+
+    .primary-reading + .primary-reading {
+      border-left: 1px solid var(--line);
+      padding-left: 38px;
+    }
+
+    .label {
+      margin-bottom: 24px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .reading-value {
+      font-size: clamp(64px, 9vw, 112px);
+      font-weight: 300;
+      line-height: .9;
+      letter-spacing: -.07em;
+    }
+
+    .reading-value small {
+      margin-left: 10px;
+      font-size: .25em;
+      font-weight: 400;
+      letter-spacing: 0;
+      vertical-align: top;
+    }
+
+    .device-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--ink);
+      padding: 12px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .battery {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .battery[hidden] { display: none; }
+
+    .battery-icon {
+      display: block;
+      width: 22px;
+      height: 11px;
+    }
+
+    .metric-note { margin-top: 5px; color: var(--muted); font-size: 12px; }
+
+    section { border-bottom: 1px solid var(--ink); padding: 30px 0; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .history-head { margin-bottom: 0; }
+
+    .range-buttons { display: flex; gap: 0; }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { display: inline-block; width: 24px; border-top: 2px solid var(--ink); }
+    .legend .humidity-line { border-top: 2px dashed var(--muted); }
+
+    button {
+      border: 1px solid var(--ink);
+      border-radius: 0;
+      padding: 8px 13px;
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    button + button { border-left: 0; }
+    button.active, button:hover { background: var(--ink); color: var(--paper); }
+    button:disabled { cursor: wait; opacity: .5; }
+
+    .chart-wrap {
+      position: relative;
+      width: 100%;
+      overflow: visible;
+      background: var(--paper);
+    }
+
+    #chart { display: block; width: 100%; height: auto; }
+    .chart-empty { display: grid; min-height: 340px; place-items: center; color: var(--muted); }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+
+    input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 8px 10px;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th, td { border-bottom: 1px solid var(--line); padding: 13px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+    th:first-child, td:first-child { padding-left: 0; text-align: left; }
+    th { color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: .06em; text-transform: uppercase; }
+    td { font-size: 13px; }
+
+    .message { padding: 24px 0; color: var(--muted); text-align: center; }
+
+    #historyPanel[hidden] { display: none; }
+    #historyPanel { margin-top: 24px; }
+    #historyToggle { padding: 6px 12px; }
+
+    @media (max-width: 680px) {
+      .page { padding: 0 16px 40px; }
+      header { min-height: 48px; padding-top: 14px; }
+      .primary-reading { min-height: 150px; padding: 24px 12px 20px 0; }
+      .primary-reading + .primary-reading { padding-left: 16px; }
+      .reading-value { font-size: clamp(52px, 16vw, 80px); }
+      .reading-value small { margin-left: 5px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .history-head { flex-direction: row; align-items: center; }
+      .legend { flex-wrap: wrap; gap: 8px 14px; }
+      .filters { grid-template-columns: 1fr; }
+      .filters button { width: 100%; }
+      .chart-empty { min-height: 220px; }
+      #historyToggle { width: auto; }
+      th:nth-child(4), td:nth-child(4),
+      th:nth-child(5), td:nth-child(5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="status">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText">刷新中</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="live">
+        <div class="primary-reading">
+          <div class="label">温度</div>
+          <div id="liveTemperature" class="reading-value">--<small>°C</small></div>
+          <div id="temperatureTime" class="metric-note">等待数据</div>
+        </div>
+        <div class="primary-reading">
+          <div class="label">湿度</div>
+          <div id="liveHumidity" class="reading-value">--<small>%</small></div>
+          <div id="humidityTime" class="metric-note">等待数据</div>
+        </div>
+      </div>
+      <div class="device-strip">
+        <span><span id="liveModel">--</span> · <span id="liveAddress">--</span></span>
+        <span id="liveBattery" class="battery" hidden></span>
+      </div>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>温湿度曲线</h2>
+            <div class="legend">
+              <span><i></i>温度 °C</span>
+              <span><i class="humidity-line"></i>湿度 %</span>
+            </div>
+            <p id="chartSummary" class="metric-note">加载中</p>
+          </div>
+          <div class="range-buttons" aria-label="时间范围">
+            <button type="button" data-hours="24" class="active">24小时</button>
+            <button type="button" data-hours="168">7天</button>
+            <button type="button" data-hours="720">30天</button>
+          </div>
+        </div>
+        <div id="chartWrap" class="chart-wrap">
+          <svg id="chart" role="img" aria-label="温湿度历史曲线"></svg>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head history-head">
+          <h2>历史记录</h2>
+          <button type="button" id="historyToggle">查看</button>
+        </div>
+        <div id="historyPanel" hidden>
+          <form id="historyForm" class="filters">
+            <label>
+              开始时间
+              <input id="fromTime" type="datetime-local">
+            </label>
+            <label>
+              结束时间
+              <input id="toTime" type="datetime-local">
+            </label>
+            <button id="queryButton" type="submit">查询</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>温度</th>
+                  <th>湿度</th>
+                  <th>电量</th>
+                  <th>信号</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+            <div id="historyMessage" class="message">加载中</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API = {
+      latestTemperature: "index.php?action=latest&field=temperature",
+      latestHumidity: "index.php?action=latest&field=humidity",
+      latestBattery: "index.php?action=latest&field=battery",
+      readings: "index.php?action=readings"
+    };
+    const MODEL_NAMES = {
+      MJWSD05MMC: "温湿度计 3",
+      MJWSD06MMC: "温湿度计 3 Mini"
+    };
+    const POLL_INTERVAL = 10000;
+    const MOBILE_QUERY = "(max-width: 680px)";
+    const state = {
+      chartHours: 24,
+      chartItems: [],
+      latestOk: false,
+      historyOpen: false,
+      refreshing: false,
+      secondsLeft: 0
+    };
+
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatNumber(value, digits = 1) {
+      return value == null ? "--" : Number(value).toFixed(digits).replace(/\.0$/, "");
+    }
+
+    function isMobile() {
+      return window.matchMedia(MOBILE_QUERY).matches;
+    }
+
+    function formatTime(value, short = false) {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (short && isMobile()) {
+        return new Intl.DateTimeFormat("zh-CN", state.chartHours <= 24
+          ? { hour: "2-digit", minute: "2-digit" }
+          : { month: "numeric", day: "numeric" }
+        ).format(date);
+      }
+      return new Intl.DateTimeFormat("zh-CN", short
+        ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+        : { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      ).format(date);
+    }
+
+    function formatModel(model) {
+      return MODEL_NAMES[model] || model || "--";
+    }
+
+    function renderBattery(value) {
+      const el = $("#liveBattery");
+      if (value == null || Number.isNaN(Number(value))) {
+        el.hidden = true;
+        el.innerHTML = "";
+        return;
+      }
+      const level = Math.max(0, Math.min(100, Number(value)));
+      const fillMax = 15.6;
+      const fillWidth = ((fillMax * level) / 100).toFixed(2);
+      el.hidden = false;
+      el.innerHTML = `
+        <svg class="battery-icon" viewBox="0 0 24 12" aria-hidden="true">
+          <rect x="0.75" y="1.75" width="19.5" height="8.5" rx="1.5"
+                fill="none" stroke="currentColor" stroke-width="1.25"/>
+          <rect x="21.25" y="4.25" width="2" height="3.5" rx="0.6" fill="currentColor"/>
+          ${level > 0
+            ? `<rect x="2.7" y="3.55" width="${fillWidth}" height="4.9" rx="0.5" fill="currentColor"/>`
+            : ""}
+        </svg>
+        <span>${escapeHtml(formatNumber(level, 0))}%</span>`;
+    }
+
+    function downsample(items, maxPoints) {
+      if (items.length <= maxPoints) return items;
+      const sampled = [];
+      const step = (items.length - 1) / (maxPoints - 1);
+      for (let index = 0; index < maxPoints; index++) {
+        sampled.push(items[Math.round(index * step)]);
+      }
+      return sampled;
+    }
+
+    function localInputValue(date) {
+      const offset = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    }
+
+    async function getJson(url) {
+      const response = await fetch(url, {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error(`API ${response.status}`);
+      }
+      return response.json();
+    }
+
+    function setStatus() {
+      const dot = $("#statusDot");
+      dot.classList.toggle("online", state.latestOk && !state.refreshing);
+      dot.classList.toggle("refreshing", state.refreshing);
+      if (state.refreshing) {
+        $("#statusText").textContent = "刷新中";
+        return;
+      }
+      const wait = `${state.secondsLeft}秒后刷新`;
+      $("#statusText").textContent = state.latestOk ? wait : `暂时无法连接 · ${wait}`;
+    }
+
+    let countdownTimer = 0;
+
+    function scheduleNextPoll() {
+      state.secondsLeft = POLL_INTERVAL / 1000;
+      setStatus();
+      window.clearInterval(countdownTimer);
+      countdownTimer = window.setInterval(() => {
+        state.secondsLeft -= 1;
+        if (state.secondsLeft <= 0) {
+          window.clearInterval(countdownTimer);
+          pollLatest();
+          return;
+        }
+        setStatus();
+      }, 1000);
+    }
+
+    async function pollLatest() {
+      if (state.refreshing) return;
+      state.refreshing = true;
+      setStatus();
+      try {
+        const [temperature, humidity, battery] = await Promise.all([
+          getJson(API.latestTemperature),
+          getJson(API.latestHumidity).catch(() => null),
+          getJson(API.latestBattery).catch(() => null)
+        ]);
+
+        $("#liveTemperature").innerHTML =
+          `${escapeHtml(formatNumber(temperature.temperature))}<small>°C</small>`;
+        $("#temperatureTime").textContent = formatTime(temperature.timestamp);
+        $("#liveModel").textContent = formatModel(temperature.model);
+        $("#liveAddress").textContent = temperature.address || "--";
+        renderBattery(battery?.battery ?? temperature.battery ?? humidity?.battery);
+
+        if (humidity) {
+          $("#liveHumidity").innerHTML =
+            `${escapeHtml(formatNumber(humidity.humidity, 0))}<small>%</small>`;
+          $("#humidityTime").textContent = formatTime(humidity.timestamp);
+        }
+
+        state.latestOk = true;
+      } catch (error) {
+        state.latestOk = false;
+        console.error(error);
+      } finally {
+        state.refreshing = false;
+        scheduleNextPoll();
+      }
+    }
+
+    async function loadRange(hours) {
+      state.chartHours = hours;
+      $$(".range-buttons button").forEach((button) => {
+        button.classList.toggle("active", Number(button.dataset.hours) === hours);
+      });
+
+      const from = new Date(Date.now() - hours * 3600000).toISOString();
+      const url = `${API.readings}&from=${encodeURIComponent(from)}&limit=25000`;
+
+      try {
+        const data = await getJson(url);
+        state.chartItems = data.items
+          .filter((item) => item.temperature != null || item.humidity != null)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        renderChart();
+      } catch (error) {
+        state.chartItems = [];
+        renderChart("曲线加载失败");
+        console.error(error);
+      }
+    }
+
+    function renderChart(errorText = "") {
+      const wrap = $("#chartWrap");
+      const items = state.chartItems;
+      if (errorText || items.length === 0) {
+        wrap.innerHTML = `<div class="chart-empty">${escapeHtml(errorText || "暂无温湿度数据")}</div>`;
+        $("#chartSummary").textContent = "无可用数据";
+        return;
+      }
+
+      if (!$("#chart")) {
+        wrap.innerHTML = '<svg id="chart" role="img" aria-label="温湿度历史曲线"></svg>';
+      }
+
+      const svg = $("#chart");
+      const mobile = isMobile();
+      const width = Math.max(wrap.clientWidth || 320, 280);
+      const height = mobile ? 220 : 340;
+      const padding = mobile
+        ? { top: 14, right: 32, bottom: 28, left: 32 }
+        : { top: 25, right: 52, bottom: 44, left: 52 };
+      const fontSize = mobile ? 10 : 12;
+      const strokeWidth = mobile ? 1.5 : 2;
+      const plotWidth = width - padding.left - padding.right;
+      const plotHeight = height - padding.top - padding.bottom;
+      const maxPoints = Math.max(Math.floor(plotWidth), 80);
+      const temperatureAll = items.filter((item) => item.temperature != null);
+      const humidityAll = items.filter((item) => item.humidity != null);
+      const temperatureItems = downsample(temperatureAll, maxPoints);
+      const humidityItems = downsample(humidityAll, maxPoints);
+
+      const makeScale = (values, minimumMargin) => {
+        if (!values.length) return null;
+        const rawMin = Math.min(...values);
+        const rawMax = Math.max(...values);
+        const margin = Math.max((rawMax - rawMin) * .15, minimumMargin);
+        return {
+          rawMin,
+          rawMax,
+          min: Math.floor((rawMin - margin) * 2) / 2,
+          max: Math.ceil((rawMax + margin) * 2) / 2
+        };
+      };
+
+      const temperatureScale = makeScale(
+        temperatureAll.map((item) => Number(item.temperature)),
+        .8
+      );
+      const humidityScale = makeScale(
+        humidityAll.map((item) => Number(item.humidity)),
+        3
+      );
+      const firstTime = new Date(items[0].timestamp).getTime();
+      const lastTime = new Date(items.at(-1).timestamp).getTime();
+      const timeSpan = Math.max(lastTime - firstTime, 1);
+
+      const x = (item) => padding.left
+        + ((new Date(item.timestamp).getTime() - firstTime) / timeSpan) * plotWidth;
+      const y = (value, scale) => padding.top
+        + (1 - (Number(value) - scale.min) / Math.max(scale.max - scale.min, 1)) * plotHeight;
+
+      const axisOffset = mobile ? 6 : 10;
+      const grid = Array.from({ length: mobile ? 4 : 5 }, (_, index) => {
+        const last = mobile ? 3 : 4;
+        const ratio = index / last;
+        const gridY = padding.top + ratio * plotHeight;
+        const temperatureLabel = temperatureScale
+          ? `${(temperatureScale.max - ratio * (temperatureScale.max - temperatureScale.min)).toFixed(mobile ? 0 : 1)}°`
+          : "";
+        const humidityLabel = humidityScale
+          ? `${(humidityScale.max - ratio * (humidityScale.max - humidityScale.min)).toFixed(0)}%`
+          : "";
+        return `
+          <line x1="${padding.left}" y1="${gridY}" x2="${width - padding.right}" y2="${gridY}"
+                stroke="#d8d8d8" stroke-width="1"/>
+          <text x="${padding.left - axisOffset}" y="${gridY + 4}" text-anchor="end"
+                fill="#111" font-size="${fontSize}">${temperatureLabel}</text>
+          <text x="${width - padding.right + axisOffset}" y="${gridY + 4}" text-anchor="start"
+                fill="#707070" font-size="${fontSize}">${humidityLabel}</text>`;
+      }).join("");
+
+      const temperaturePoints = temperatureScale
+        ? temperatureItems.map((item) =>
+            `${x(item).toFixed(2)},${y(item.temperature, temperatureScale).toFixed(2)}`
+          ).join(" ")
+        : "";
+      const humidityPoints = humidityScale
+        ? humidityItems.map((item) =>
+            `${x(item).toFixed(2)},${y(item.humidity, humidityScale).toFixed(2)}`
+          ).join(" ")
+        : "";
+      const labelItems = mobile
+        ? [items[0], items.at(-1)]
+        : [items[0], items[Math.floor((items.length - 1) / 2)], items.at(-1)];
+      const labels = labelItems.map((item, index, list) => `
+          <text x="${x(item)}" y="${height - (mobile ? 8 : 12)}"
+                text-anchor="${index === 0 ? "start" : index === list.length - 1 ? "end" : "middle"}"
+                fill="#707070" font-size="${fontSize}">${escapeHtml(formatTime(item.timestamp, true))}</text>`
+      ).join("");
+
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("width", String(width));
+      svg.setAttribute("height", String(height));
+      svg.innerHTML = `
+        ${grid}
+        ${temperaturePoints
+          ? `<polyline points="${temperaturePoints}" fill="none" stroke="#111" stroke-width="${strokeWidth}"
+                       stroke-linejoin="round" stroke-linecap="round"/>`
+          : ""}
+        ${humidityPoints
+          ? `<polyline points="${humidityPoints}" fill="none" stroke="#707070" stroke-width="${strokeWidth}"
+                       stroke-dasharray="${mobile ? "5 4" : "7 6"}" stroke-linejoin="round" stroke-linecap="round"/>`
+          : ""}
+        ${labels}`;
+
+      const summaries = [];
+      if (temperatureScale) {
+        summaries.push(
+          `温度 ${formatNumber(temperatureScale.rawMin)}° 至 ${formatNumber(temperatureScale.rawMax)}°`
+        );
+      }
+      if (humidityScale) {
+        summaries.push(
+          `湿度 ${formatNumber(humidityScale.rawMin, 0)}% 至 ${formatNumber(humidityScale.rawMax, 0)}%`
+        );
+      }
+      $("#chartSummary").textContent = summaries.join(mobile ? " · " : "　");
+    }
+
+    async function loadHistory(event) {
+      event?.preventDefault();
+      const button = $("#queryButton");
+      button.disabled = true;
+      $("#historyMessage").hidden = false;
+      $("#historyMessage").textContent = "加载中";
+
+      const params = new URLSearchParams({ limit: "500" });
+      const from = $("#fromTime").value;
+      const to = $("#toTime").value;
+      if (from) params.set("from", new Date(from).toISOString());
+      if (to) params.set("to", new Date(to).toISOString());
+
+      try {
+        const data = await getJson(`${API.readings}&${params}`);
+        renderHistory(data.items);
+      } catch (error) {
+        $("#historyBody").innerHTML = "";
+        $("#historyMessage").hidden = false;
+        $("#historyMessage").textContent = "历史数据加载失败";
+        console.error(error);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function renderHistory(items) {
+      $("#historyToggle").textContent = `收起 · ${items.length} 条`;
+      $("#historyMessage").hidden = items.length > 0;
+      $("#historyMessage").textContent = items.length ? "" : "该时段暂无数据";
+      $("#historyBody").innerHTML = items.map((item) => `
+        <tr>
+          <td>${escapeHtml(formatTime(item.timestamp))}</td>
+          <td>${escapeHtml(formatNumber(item.temperature))} °C</td>
+          <td>${escapeHtml(formatNumber(item.humidity, 0))} %</td>
+          <td>${escapeHtml(formatNumber(item.battery, 0))} %</td>
+          <td>${escapeHtml(formatNumber(item.rssi, 0))} dBm</td>
+        </tr>
+      `).join("");
+    }
+
+    function initializeDates() {
+      const now = new Date();
+      $("#toTime").value = localInputValue(now);
+      $("#fromTime").value = localInputValue(new Date(now.getTime() - 24 * 3600000));
+    }
+
+    function toggleHistory() {
+      state.historyOpen = !state.historyOpen;
+      $("#historyPanel").hidden = !state.historyOpen;
+      $("#historyToggle").textContent = state.historyOpen ? "收起" : "查看";
+      if (state.historyOpen) {
+        loadHistory();
+      }
+    }
+
+    $$(".range-buttons button").forEach((button) => {
+      button.addEventListener("click", () => loadRange(Number(button.dataset.hours)));
+    });
+    $("#historyToggle").addEventListener("click", toggleHistory);
+    $("#historyForm").addEventListener("submit", loadHistory);
+
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        if (state.chartItems.length) renderChart();
+      }, 120);
+    });
+
+    initializeDates();
+    pollLatest();
+    loadRange(24);
+  </script>
+</body>
+</html>

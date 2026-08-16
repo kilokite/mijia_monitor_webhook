@@ -184,3 +184,16 @@ python -m unittest -v
 ```
 
 测试覆盖未加密广播、AES-CCM 加密广播、3 Mini 产品 ID、JSON 配置加载和 webhook JSON 请求。
+
+## PHP 接收服务
+
+MySQL webhook 接收和查询 API 位于 [`php_webhook_service/`](php_webhook_service/README.md)。
+
+## TODO
+
+- [ ] 打通端到端多设备支持
+  - 将 JSON 配置改为设备数组，每台设备独立配置 MAC 和 bindkey
+  - Collector 按 MAC 使用对应的解密密钥和解析状态
+  - Webhook 保持携带设备地址和型号
+  - 查询 API 增加设备列表接口及设备过滤
+  - 前端增加设备选择器，避免温度和湿度来自不同设备

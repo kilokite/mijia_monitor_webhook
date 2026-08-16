@@ -21,11 +21,10 @@ from mijia_monitor import (
 
 ADDRESS = "A4:C1:38:12:34:56"
 BINDKEY = bytes.fromhex("00112233445566778899aabbccddeeff")
-OBJECTS = (
-    b"\x04\x10\x02\xea\x00"  # 23.4 C
-    b"\x06\x10\x02\x37\x02"  # 56.7 %
-    b"\x0a\x10\x01\x58"  # 88 % battery
-)
+TEMPERATURE_OBJECT = b"\x04\x10\x02\xea\x00"  # 23.4 C
+HUMIDITY_OBJECT = b"\x06\x10\x02\x37\x02"  # 56.7 %
+BATTERY_OBJECT = b"\x0a\x10\x01\x58"  # 88 % battery
+OBJECTS = TEMPERATURE_OBJECT + HUMIDITY_OBJECT + BATTERY_OBJECT
 
 
 def service_info(payload: bytes, address: str = ADDRESS) -> BluetoothServiceInfo:
@@ -40,14 +39,14 @@ def service_info(payload: bytes, address: str = ADDRESS) -> BluetoothServiceInfo
     )
 
 
-def unencrypted_payload(product_id: int = 0x2832) -> bytes:
+def unencrypted_payload(product_id: int = 0x2832, objects: bytes = OBJECTS) -> bytes:
     mac = bytes.fromhex(ADDRESS.replace(":", ""))
     return (
         (0x5050).to_bytes(2, "little")
         + product_id.to_bytes(2, "little")
         + b"\x01"
         + mac[::-1]
-        + OBJECTS
+        + objects
     )
 
 
@@ -192,6 +191,50 @@ class CollectorTest(unittest.TestCase):
 
         self.assertIsNone(collector.process(service_info(encrypted_payload())))
         self.assertTrue(any("bindkey" in notice for notice in notices))
+
+    def test_accumulates_split_frames_including_battery(self) -> None:
+        collector = MijiaCollector()
+
+        humidity = collector.process(
+            service_info(unencrypted_payload(objects=HUMIDITY_OBJECT))
+        )
+        self.assertIsNotNone(humidity)
+        assert humidity is not None
+        self.assertIsNone(humidity.temperature)
+        self.assertEqual(humidity.humidity, 56.7)
+        self.assertIsNone(humidity.battery)
+
+        temperature = collector.process(
+            service_info(unencrypted_payload(objects=TEMPERATURE_OBJECT))
+        )
+        self.assertIsNotNone(temperature)
+        assert temperature is not None
+        self.assertEqual(temperature.temperature, 23.4)
+        self.assertEqual(temperature.humidity, 56.7)
+        self.assertIsNone(temperature.battery)
+
+        battery = collector.process(
+            service_info(unencrypted_payload(objects=BATTERY_OBJECT))
+        )
+        self.assertIsNotNone(battery)
+        assert battery is not None
+        self.assertEqual(battery.temperature, 23.4)
+        self.assertEqual(battery.humidity, 56.7)
+        self.assertEqual(battery.battery, 88.0)
+
+    def test_keeps_battery_until_temperature_or_humidity_arrives(self) -> None:
+        collector = MijiaCollector()
+        self.assertIsNone(
+            collector.process(service_info(unencrypted_payload(objects=BATTERY_OBJECT)))
+        )
+
+        reading = collector.process(
+            service_info(unencrypted_payload(objects=TEMPERATURE_OBJECT))
+        )
+        self.assertIsNotNone(reading)
+        assert reading is not None
+        self.assertEqual(reading.temperature, 23.4)
+        self.assertEqual(reading.battery, 88.0)
 
     def test_filters_other_models_and_mac_addresses(self) -> None:
         collector = MijiaCollector(target_mac="00:11:22:33:44:55")
