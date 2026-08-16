@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mijia_monitor.py 源码级实现说明</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101d;
+      --panel: #101d30;
+      --panel2: #15263d;
+      --text: #e7effa;
+      --muted: #9cafc7;
+      --line: #2a4261;
+      --blue: #56d8ff;
+      --green: #62e6aa;
+      --orange: #ffc06b;
+      --red: #ff8290;
+      --code: #050c16;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0, #123253 0, transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.72 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    header, main, footer { width: min(1180px, calc(100% - 32px)); margin: auto; }
+    header { padding: 64px 0 30px; }
+    h1 { max-width: 900px; margin: 8px 0 14px; font-size: clamp(2.2rem, 6vw, 4.2rem); line-height: 1.08; }
+    h2 { margin: 0 0 18px; font-size: clamp(1.5rem, 3vw, 2.15rem); }
+    h3 { margin: 26px 0 10px; color: var(--green); }
+    p { margin: 0 0 14px; }
+    a { color: var(--blue); }
+    .eyebrow { color: var(--blue); font-size: .8rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .lead { max-width: 850px; color: var(--muted); font-size: 1.12rem; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+    nav a { border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--text); text-decoration: none; }
+    nav a:hover { border-color: var(--blue); color: var(--blue); }
+    section {
+      margin: 24px 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: clamp(22px, 4vw, 38px);
+      background: linear-gradient(145deg, rgba(21,38,61,.94), rgba(10,21,36,.96));
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+    .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: rgba(5,12,22,.42); }
+    .card strong { display: block; color: var(--green); margin-bottom: 6px; }
+    .muted, small { color: var(--muted); }
+    code { border-radius: 5px; padding: .08em .34em; background: rgba(86,216,255,.09); color: #c7f1ff; font-family: "Cascadia Code", Consolas, monospace; }
+    pre {
+      overflow-x: auto;
+      margin: 12px 0 20px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 16px;
+      background: var(--code);
+      color: #dce9f8;
+      font-size: .9rem;
+      line-height: 1.58;
+      tab-size: 4;
+    }
+    pre code { padding: 0; background: none; color: inherit; }
+    .note { margin: 16px 0; border-left: 4px solid var(--blue); border-radius: 8px; padding: 13px 15px; background: rgba(86,216,255,.07); }
+    .warn { border-left-color: var(--orange); background: rgba(255,192,107,.08); }
+    .danger { border-left-color: var(--red); background: rgba(255,130,144,.08); }
+    .ok { border-left-color: var(--green); background: rgba(98,230,170,.08); }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; }
+    th { color: var(--blue); }
+    .stack { counter-reset: item; display: grid; gap: 10px; }
+    .stack > div { counter-increment: item; border-left: 2px solid var(--line); padding: 4px 0 4px 42px; position: relative; }
+    .stack > div::before {
+      content: counter(item);
+      position: absolute; left: 4px; top: 3px; width: 26px; height: 26px;
+      display: grid; place-items: center; border-radius: 50%; background: var(--blue); color: #03101a; font-weight: 900;
+    }
+    .tag { display: inline-block; margin-right: 6px; border-radius: 999px; padding: 2px 9px; background: var(--panel2); color: var(--orange); font-size: .82rem; }
+    footer { padding: 24px 0 50px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Source-level walkthrough</div>
+    <h1><code>mijia_monitor.py</code> 是怎样工作的</h1>
+    <p class="lead">
+      这不是协议概览，而是沿着真实源码执行路径逐层拆解：
+      参数如何进入、广播回调何时执行、payload 如何取产品 ID、xiaomi-ble 返回什么、
+      状态如何去重、AES-CCM 测试帧如何构造，以及当前实现哪里仍有缺口。
+    </p>
+    <nav>
+      <a href="#entry">程序入口</a>
+      <a href="#scanner">扫描回调</a>
+      <a href="#payload">字节解析</a>
+      <a href="#collector">Collector</a>
+      <a href="#library">xiaomi-ble 边界</a>
+      <a href="#crypto">AES-CCM 测试</a>
+      <a href="#state">状态与去重</a>
+      <a href="#limitations">真实限制</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="entry">
+      <h2>1. 从 <code>main()</code> 开始追调用栈</h2>
+      <p>Python 执行文件后，最底部只做一件事：调用 <code>main()</code>，并把返回值交给操作系统。</p>
+      <pre><code>if __name__ == "__main__":
+    raise SystemExit(main())</code></pre>
+
+      <p><code>main()</code> 的执行顺序是固定的：</p>
+      <div class="stack">
+        <div><code>build_arg_parser()</code> 只定义 <code>--config</code> 参数，默认读取 <code>config.json</code>。</div>
+        <div><code>load_config()</code> 读取 JSON，并校验 MAC、bindkey、超时和 webhook 字段。</div>
+        <div>JSON 数据转换为不可变的 <code>AppConfig</code> 和 <code>WebhookConfig</code>。</div>
+        <div>根据 <code>config.verbose</code> 设置日志级别。</div>
+        <div><code>asyncio.run(scan(config))</code> 创建事件循环并进入异步扫描。</div>
+      </div>
+
+      <h3>JSON 配置怎样变成运行参数</h3>
+      <pre><code>raw = json.loads(path.read_text(encoding="utf-8"))
+
+bindkey_value = _optional_string(raw, "bindkey")
+mac_value = _optional_string(raw, "mac")
+mac = normalize_mac(mac_value) if mac_value else None
+timeout = _number(raw, "timeout", 0.0)</code></pre>
+      <p>
+        bindkey 直接存放在 JSON 的 <code>bindkey</code> 字段中。
+        <code>config.json</code> 被加入 <code>.gitignore</code>，避免真实密钥和 webhook 凭据进入版本库。
+      </p>
+
+      <pre><code>return AppConfig(
+    mac=mac,
+    bindkey=parse_bindkey(bindkey_value),
+    adapter=adapter,
+    timeout=timeout,
+    once=_boolean(raw, "once", False),
+    json_output=_boolean(raw, "json", False),
+    raw=_boolean(raw, "raw", False),
+    verbose=_boolean(raw, "verbose", False),
+    webhook=WebhookConfig(...),
+)</code></pre>
+
+      <h3>为什么严格要求 32 个字符</h3>
+      <pre><code>normalized = value.strip().replace(" ", "")
+if not re.fullmatch(r"[0-9a-fA-F]{32}", normalized):
+    raise ValueError("bindkey must contain exactly 32 hexadecimal characters")
+return bytes.fromhex(normalized)</code></pre>
+      <p>
+        MiBeacon v4/v5 使用 16 字节 key。一个字节由两个十六进制字符表示，因此必须是
+        <code>16 × 2 = 32</code> 个字符。设备列表里的 24 位 token 不会通过这里。
+      </p>
+    </section>
+
+    <section id="scanner">
+      <h2>2. <code>scan()</code> 如何接收广播</h2>
+      <p><code>scan()</code> 先创建扫描状态和 webhook 任务集合：</p>
+      <pre><code>stop_event = asyncio.Event()
+received_count = 0
+webhook_tasks: set[asyncio.Task[None]] = set()</code></pre>
+      <ul>
+        <li><code>stop_event</code>：异步停止信号。超时、Ctrl+C 或配置中的 <code>once</code> 完成时结束扫描。</li>
+        <li><code>received_count</code>：成功输出过多少条测量，用于决定进程退出码。</li>
+        <li><code>webhook_tasks</code>：仍在执行的 HTTP POST；退出前会等待它们完成。</li>
+      </ul>
+
+      <h3>Bleak 的回调模型</h3>
+      <pre><code>scanner = BleakScanner(
+    detection_callback=on_advertisement,
+    **scanner_options,
+)
+
+await scanner.start()</code></pre>
+      <p>
+        BlueZ 每收到一次 BLE 广播，Bleak 就调用一次
+        <code>on_advertisement(device, advertisement)</code>。
+        这不是“一台设备调用一次”，而是“一帧调用一次”，所以同一个短帧会连续出现几十次。
+      </p>
+
+      <h3>回调中的真实顺序</h3>
+      <pre><code>def on_advertisement(device, advertisement):
+    nonlocal received_count
+
+    payload = mibeacon_payload(advertisement.service_data)
+    if config.raw and payload is not None:
+        product_id = mibeacon_product_id(payload)
+        if product_id in TARGET_PRODUCT_IDS:
+            notice(f"raw {device.address.upper()} {payload.hex()}")
+
+    reading = collector.process(
+        build_service_info(device, advertisement, config.adapter or "hci0")
+    )
+    if reading is None:
+        return
+
+    received_count += 1
+    print(format_reading(reading, json_output=config.json_output), flush=True)
+
+    if webhook_session is not None:
+        task = asyncio.create_task(
+            send_webhook(webhook_session, config.webhook, reading)
+        )
+        webhook_tasks.add(task)
+        task.add_done_callback(webhook_done)
+
+    if config.once and reading.temperature is not None and reading.humidity is not None:
+        stop_event.set()</code></pre>
+
+      <div class="note">
+        <strong><code>--raw</code> 与解析不是二选一。</strong>
+        raw 模式先打印 payload，随后仍然把同一帧交给 Collector 解密解析。
+      </div>
+
+      <h3>为什么日志和数据分两个输出流</h3>
+      <pre><code>print(f"[mijia-monitor] {message}", file=sys.stderr, flush=True)
+print(format_reading(reading, json_output=config.json_output), flush=True)</code></pre>
+      <p>
+        扫描状态写 <code>stderr</code>，测量数据写 <code>stdout</code>。
+        因此将配置中的 <code>json</code> 设为 <code>true</code> 后，可以安全地重定向 stdout：
+        文件里只有机器可读数据，扫描提示仍显示在终端。
+      </p>
+
+      <h3>Webhook 为什么不会阻塞 BLE 回调</h3>
+      <pre><code>task = asyncio.create_task(
+    send_webhook(webhook_session, config.webhook, reading)
+)
+webhook_tasks.add(task)
+task.add_done_callback(webhook_done)</code></pre>
+      <p>
+        回调只创建异步任务，不等待网络响应，因此慢 webhook 不会卡住当前广播处理。
+        <code>webhook_done()</code> 负责移除已完成任务并把异常写到 stderr；
+        webhook 失败不会终止蓝牙扫描。
+      </p>
+
+      <pre><code>async def send_webhook(session, webhook, reading):
+    async with session.post(
+        webhook.url,
+        json=asdict(reading),
+        headers=webhook.headers,
+    ) as response:
+        await response.read()
+        response.raise_for_status()</code></pre>
+      <p>
+        aiohttp 的 <code>json=</code> 自动完成 JSON 序列化并设置
+        <code>Content-Type: application/json</code>。非 2xx 响应由
+        <code>raise_for_status()</code> 转成异常。
+      </p>
+    </section>
+
+    <section id="payload">
+      <h2>3. 原始广播如何变成产品 ID</h2>
+      <h3>先找到 FE95 Service Data</h3>
+      <pre><code>MIBEACON_UUID = "0000fe95-0000-1000-8000-00805f9b34fb"
+
+def mibeacon_payload(service_data):
+    for uuid, payload in service_data.items():
+        if uuid.lower() == MIBEACON_UUID:
+            return payload
+    return None</code></pre>
+      <p>
+        <code>advertisement.service_data</code> 是 <code>dict[str, bytes]</code>。
+        UUID 字符串先转小写再比较；没有 FE95 就立即忽略。
+      </p>
+
+      <h3>产品 ID 位于偏移 2..3</h3>
+      <pre><code>def mibeacon_product_id(payload):
+    if len(payload) &lt; 4:
+        return None
+    return int.from_bytes(payload[2:4], byteorder="little")</code></pre>
+
+      <p>实测短帧：</p>
+      <pre><code>10 59  b5 55  7b  85 bf b3 38 c1 a4
+│      │      │   └───────────────┘
+│      │      │        逆序 MAC
+│      │      └─ frame counter
+│      └─ payload[2:4] = b5 55
+└─ frame control
+
+int.from_bytes(b"\xb5\x55", "little") == 0x55B5</code></pre>
+
+      <p>随后用字典完成产品 ID 到型号的映射：</p>
+      <pre><code>TARGET_MODELS = {
+    0x2832: "MJWSD05MMC",
+    0x4C47: "MJWSD05MMC",
+    0x55B5: "MJWSD06MMC",
+    0x5BEA: "MJWSD06MMC",
+}
+TARGET_PRODUCT_IDS = frozenset(TARGET_MODELS)</code></pre>
+      <p>
+        <code>frozenset(TARGET_MODELS)</code> 取的是字典的 key，因此等价于不可变集合
+        <code>{0x2832, 0x4C47, 0x55B5, 0x5BEA}</code>。
+        不在集合中的小米设备在进入第三方解析器前就被过滤掉。
+      </p>
+    </section>
+
+    <section id="collector">
+      <h2>4. <code>MijiaCollector.process()</code> 逐行发生什么</h2>
+      <p>Collector 是项目自己的核心边界：上游接 Bleak，下游接 xiaomi-ble。</p>
+
+      <h3>4.1 标准化并过滤 MAC</h3>
+      <pre><code>address = normalize_mac(service_info.address)
+if self._target_mac and address != self._target_mac:
+    return None</code></pre>
+      <p>
+        <code>normalize_mac()</code> 同时接受 <code>aa-bb-...</code> 和
+        <code>AA:BB:...</code>，统一成大写冒号形式。格式不合法直接丢帧。
+      </p>
+
+      <h3>4.2 过滤协议与型号</h3>
+      <pre><code>payload = mibeacon_payload(service_info.service_data)
+if payload is None:
+    return None
+
+product_id = mibeacon_product_id(payload)
+if product_id not in TARGET_PRODUCT_IDS:
+    return None</code></pre>
+
+      <h3>4.3 每个 MAC 创建一个独立解析器</h3>
+      <pre><code>state = self._states.get(address)
+if state is None:
+    state = _DeviceState(
+        parser=XiaomiBluetoothDeviceData(bindkey=self._bindkey),
+        product_id=product_id,
+        model=TARGET_MODELS[product_id],
+    )
+    self._states[address] = state</code></pre>
+      <p>
+        <code>self._states</code> 的 key 是 MAC。这样同时扫描两台温湿度计时，
+        每台设备都有自己的帧计数、解密状态和上次测量，不会串数据。
+      </p>
+
+      <h3>4.4 把整帧交给 xiaomi-ble</h3>
+      <pre><code>update = state.parser.update(service_info)
+
+values = {
+    str(key.key): value.native_value
+    for key, value in update.entity_values.items()
+    if str(key.key) in VALUE_KEYS
+}</code></pre>
+      <p><code>update.entity_values</code> 不是普通的字符串字典：</p>
+      <ul>
+        <li>key 是 xiaomi-ble / sensor-state-data 的设备类 key 对象。</li>
+        <li><code>key.key</code> 才是 <code>temperature</code> 等逻辑名称。</li>
+        <li>value 是带单位、设备类别等元信息的对象。</li>
+        <li><code>value.native_value</code> 才是项目最终需要的数值。</li>
+      </ul>
+      <p>项目只保留以下四类：</p>
+      <pre><code>VALUE_KEYS = ("temperature", "humidity", "battery", "signal_strength")</code></pre>
+
+      <h3>4.5 解密失败提示的触发条件</h3>
+      <pre><code>if (
+    state.parser.encryption_scheme != EncryptionScheme.NONE
+    and not state.parser.bindkey_verified
+    and not state.encryption_notice_sent
+):
+    ...</code></pre>
+      <p>必须同时满足：</p>
+      <ol>
+        <li>解析器确认该帧使用加密；</li>
+        <li>bindkey 尚未通过认证；</li>
+        <li>这台设备还没有提示过。</li>
+      </ol>
+      <p>
+        <code>encryption_notice_sent</code> 防止每个广播都打印一次错误。
+        因此短身份帧没有触发提示并不奇怪：它可能根本没有加密对象供解析器验证。
+      </p>
+
+      <h3>4.6 类型收口</h3>
+      <pre><code>def _number_or_none(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)</code></pre>
+      <p>
+        Python 中 <code>bool</code> 是 <code>int</code> 的子类，所以必须先显式排除，
+        否则 <code>True</code> 会被错误转换成 <code>1.0</code>。
+      </p>
+    </section>
+
+    <section id="library">
+      <h2>5. 哪些代码是本项目写的，哪些交给 <code>xiaomi-ble</code></h2>
+      <table>
+        <thead>
+          <tr><th>职责</th><th>实现位置</th><th>具体工作</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>扫描 BLE</td><td>Bleak</td><td>与 BlueZ 通信，产生广播回调。</td></tr>
+          <tr><td>筛选设备</td><td>本项目</td><td>FE95、MAC、产品 ID 白名单。</td></tr>
+          <tr><td>构造输入对象</td><td>本项目</td><td>把 Bleak 数据转成 <code>BluetoothServiceInfo</code>。</td></tr>
+          <tr><td>MiBeacon 帧解析</td><td>xiaomi-ble</td><td>识别帧控制、计数器、对象区和加密版本。</td></tr>
+          <tr><td>AES-CCM 解密</td><td>xiaomi-ble</td><td>构造 nonce，验证认证标签，解密对象。</td></tr>
+          <tr><td>对象 ID 转实体</td><td>xiaomi-ble</td><td>例如 3 Mini 的 <code>0x4801</code> 温度、<code>0x4802</code> 湿度。</td></tr>
+          <tr><td>输出与去重</td><td>本项目</td><td>转换为 <code>Reading</code>，过滤重复，打印文本或 JSON。</td></tr>
+        </tbody>
+      </table>
+
+      <h3><code>build_service_info()</code> 是适配器层</h3>
+      <pre><code>return BluetoothServiceInfo(
+    name=advertisement.local_name or device.name or DEFAULT_MODEL,
+    address=device.address,
+    rssi=advertisement.rssi,
+    manufacturer_data=advertisement.manufacturer_data,
+    service_data=advertisement.service_data,
+    service_uuids=advertisement.service_uuids,
+    source=source,
+)</code></pre>
+      <p>
+        xiaomi-ble 不是直接接收 Bleak 的两个对象，而是接收 Home Assistant Bluetooth
+        生态定义的 <code>BluetoothServiceInfo</code>。这个函数只搬运字段，不做协议解析。
+      </p>
+
+      <div class="note ok">
+        实测得到 <code>humidity=74%</code> 的意义很明确：
+        产品 ID 路由正确、bindkey 与 MAC 匹配、xiaomi-ble 已识别 3 Mini 对象并通过 AES-CCM 认证。
+      </div>
+    </section>
+
+    <section id="crypto">
+      <h2>6. 单元测试怎样手工造出 AES-CCM 广播</h2>
+      <p>
+        <code>test_mijia_monitor.py</code> 不需要真实蓝牙。它直接构造
+        <code>BluetoothServiceInfo</code>，然后调用 <code>collector.process()</code>。
+      </p>
+
+      <h3>未加密对象区</h3>
+      <pre><code>OBJECTS = (
+    b"\x04\x10\x02\xea\x00"  # object 0x1004, len=2, 0x00EA = 234 → 23.4°C
+    b"\x06\x10\x02\x37\x02"  # object 0x1006, len=2, 0x0237 = 567 → 56.7%
+    b"\x0a\x10\x01\x58"      # object 0x100A, len=1, 0x58 = 88%
+)</code></pre>
+      <p>
+        对象 ID 同样是小端序，因此字节 <code>04 10</code> 表示 <code>0x1004</code>。
+        温度和湿度整数按 0.1 倍缩放。
+      </p>
+
+      <h3>加密帧头与 nonce</h3>
+      <pre><code>counter = 1
+header = (
+    (0x5958).to_bytes(2, "little")
+    + (0x2832).to_bytes(2, "little")
+    + bytes([counter])
+    + mac[::-1]
+)
+
+extended_counter = bytes([counter, 0, 0])
+nonce = mac[::-1] + header[2:5] + extended_counter</code></pre>
+
+      <h3>AES-CCM 加密</h3>
+      <pre><code>encrypted = AESCCM(BINDKEY, tag_length=4).encrypt(
+    nonce,
+    OBJECTS,
+    b"\x11",
+)
+
+payload = (
+    header
+    + encrypted[:-4]
+    + extended_counter
+    + encrypted[-4:]
+)</code></pre>
+      <p>
+        <code>AESCCM.encrypt()</code> 返回“密文 + 认证标签”。测试使用 4 字节标签，
+        再按 MiBeacon 布局把扩展计数器插入密文和标签之间。
+        <code>b"\x11"</code> 是附加认证数据（AAD），它不加密但参与认证。
+      </p>
+
+      <div class="note warn">
+        <strong>测试边界：</strong>
+        当前 AES-CCM 测试帧使用的是 MJWSD05MMC 的 <code>0x2832</code> 和传统
+        <code>0x1004/0x1006</code> 对象，不是 3 Mini 原厂固件真实的
+        <code>0x4801/0x4802</code> 加密样本。
+      </div>
+    </section>
+
+    <section id="state">
+      <h2>7. 状态、去重与 <code>--once</code></h2>
+      <p>每个设备当前只保存以下状态：</p>
+      <pre><code>@dataclass
+class _DeviceState:
+    parser: XiaomiBluetoothDeviceData
+    product_id: int
+    model: str
+    last_measurement: tuple[float | None, float | None, float | None] | None = None
+    encryption_notice_sent: bool = False</code></pre>
+
+      <h3>去重逻辑</h3>
+      <pre><code>measurement = (temperature, humidity, battery)
+if measurement == state.last_measurement:
+    return None
+state.last_measurement = measurement</code></pre>
+      <p>
+        RSSI 没放进 tuple，因为 RSSI 每帧都会轻微波动；如果加入 RSSI，
+        即使温湿度完全没变也会不断输出。
+      </p>
+
+      <h3><code>once</code> 配置的停止条件</h3>
+      <pre><code>if config.once and reading.temperature is not None and reading.humidity is not None:
+    stop_event.set()</code></pre>
+      <p>
+        只有<strong>同一个 <code>Reading</code></strong> 同时带温度和湿度才停止。
+        这对一帧包含完整对象的设备成立，但对分帧发送的 3 Mini 不一定成立。
+      </p>
+
+      <h3>超时与退出码</h3>
+      <pre><code>return 0 if received_count else 2</code></pre>
+      <table>
+        <thead><tr><th>退出码</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>至少输出过一条温度或湿度数据。</td></tr>
+          <tr><td><code>1</code></td><td>扫描器、BlueZ、文件读取等运行错误。</td></tr>
+          <tr><td><code>2</code></td><td>正常完成或超时，但没有任何有效测量。</td></tr>
+          <tr><td><code>130</code></td><td>用户按 Ctrl+C 中断。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="limitations">
+      <h2>8. 当前实现的真实缺口</h2>
+
+      <div class="note danger">
+        <strong>缺口 1：Collector 不会合并分帧测量。</strong>
+        如果先收到 <code>{humidity: 74}</code>，下一帧再收到
+        <code>{temperature: 27.1}</code>，当前代码会分别生成
+        <code>(None, 74, None)</code> 和 <code>(27.1, None, None)</code>，
+        不会自动组合为 <code>(27.1, 74, None)</code>。
+      </div>
+      <p>因此 3 Mini 上启用 <code>once</code> 可能一直等到超时。正确修复方向是给状态增加最新字段：</p>
+      <pre><code>@dataclass
+class _DeviceState:
+    ...
+    temperature: float | None = None
+    humidity: float | None = None
+    battery: float | None = None
+
+# 每帧只覆盖本帧实际出现的字段
+if "temperature" in values:
+    state.temperature = _number_or_none(values["temperature"])
+if "humidity" in values:
+    state.humidity = _number_or_none(values["humidity"])
+if "battery" in values:
+    state.battery = _number_or_none(values["battery"])
+
+# Reading 使用累计后的状态
+measurement = (state.temperature, state.humidity, state.battery)</code></pre>
+
+      <div class="note warn">
+        <strong>缺口 2：3 Mini 单测只验证“产品 ID 放行与型号映射”。</strong>
+        <code>test_mjwsd06mmc_hardware_revisions()</code> 把传统对象区换上
+        <code>0x55B5/0x5BEA</code> 头部，并没有复现真实 3 Mini 的加密
+        <code>0x4801/0x4802</code> payload。
+      </div>
+      <p>
+        当前最有价值的 3 Mini 验证来自真实设备：程序确实用正确 bindkey 解出了湿度。
+        要做完整回归测试，应保存一帧已知密钥的真实温度 payload，并在测试中断言其结果；
+        测试样本必须使用专用测试密钥，不能提交个人设备密钥。
+      </p>
+
+      <div class="note">
+        <strong>缺口 3：<code>--raw</code> 不去重。</strong>
+        原厂固件会在一次 burst 内重复发送大量相同短帧，所以 raw 输出刷屏。
+        这不影响正常模式，只影响排错可读性。
+      </div>
+
+      <h3>实测短帧为什么没有温度</h3>
+      <p>
+        payload 总长只有 11 字节：2 字节帧控制 + 2 字节产品 ID + 1 字节计数器 + 6 字节 MAC。
+        头部结束后没有对象区或密文区，所以任何解析器都不可能从这帧得到温度。
+        必须等待原厂固件数分钟一次的测量 burst。
+      </p>
+    </section>
+
+    <section>
+      <h2>9. 完整调用链速查</h2>
+      <pre><code>__main__
+└── main()
+    ├── build_arg_parser()
+    ├── load_config()
+    │   ├── json.loads()
+    │   ├── normalize_mac()
+    │   └── parse_bindkey()
+    └── asyncio.run(scan(config))
+        ├── MijiaCollector(...)
+        ├── aiohttp.ClientSession(...)         # 配置 webhook 时创建
+        ├── BleakScanner(detection_callback=on_advertisement)
+        ├── await scanner.start()
+        └── on_advertisement()                 # 每一帧调用
+            ├── mibeacon_payload()             # 提取 FE95 bytes
+            ├── mibeacon_product_id()          # bytes[2:4] 小端序
+            ├── build_service_info()           # Bleak → HA Bluetooth 类型
+            └── collector.process()
+                ├── normalize_mac()
+                ├── mibeacon_payload()
+                ├── mibeacon_product_id()
+                ├── XiaomiBluetoothDeviceData.update()
+                │   ├── 解析 MiBeacon
+                │   ├── AES-CCM 验证与解密
+                │   └── 对象 ID → entity_values
+                ├── _number_or_none()
+                ├── measurement 去重
+                └── Reading(...)
+                    ├── format_reading()
+                    │   ├── 文本
+                    │   └── JSON Lines
+                    └── create_task(send_webhook())
+                        └── aiohttp POST JSON</code></pre>
+      <p class="muted">
+        对应源码：<code>mijia_monitor.py</code>；离线构帧与断言：
+        <code>test_mijia_monitor.py</code>。
+      </p>
+    </section>
+  </main>
+
+  <footer>HOW_IT_WORKS.html · 源码级实现说明</footer>
+</body>
+</html>

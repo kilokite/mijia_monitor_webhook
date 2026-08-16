@@ -1,0 +1,17 @@
+{
+  "mac": "A4:C1:38:12:34:56",
+  "bindkey": "00112233445566778899aabbccddeeff",
+  "adapter": null,
+  "timeout": 600,
+  "once": false,
+  "json": false,
+  "raw": false,
+  "verbose": false,
+  "webhook": {
+    "url": "https://example.com/mijia-webhook",
+    "timeout": 10,
+    "headers": {
+      "Authorization": "Bearer replace-me"
+    }
+  }
+}
