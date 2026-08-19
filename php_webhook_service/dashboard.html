@@ -10,8 +10,11 @@
       --ink: #111;
       --paper: #fff;
       --muted: #707070;
+      --humidity: rgba(0, 0, 0, .5);
       --line: #d8d8d8;
       --soft: #f6f6f6;
+      --offline: rgba(255, 0, 0, .08);
+      --offline-line: rgba(255, 0, 0, .2);
     }
 
     * { box-sizing: border-box; }
@@ -162,7 +165,12 @@
 
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { display: inline-block; width: 24px; border-top: 2px solid var(--ink); }
-    .legend .humidity-line { border-top: 2px dashed var(--muted); }
+    .legend .humidity-line { border-top: 2px solid var(--humidity); }
+    .legend .offline-block {
+      height: 10px;
+      border: 1px solid var(--offline-line);
+      background: var(--offline);
+    }
 
     button {
       border: 1px solid var(--ink);
@@ -273,6 +281,7 @@
             <div class="legend">
               <span><i></i>温度 °C</span>
               <span><i class="humidity-line"></i>湿度 %</span>
+              <span><i class="offline-block"></i>离线</span>
             </div>
             <p id="chartSummary" class="metric-note">加载中</p>
           </div>
@@ -336,6 +345,7 @@
       MJWSD06MMC: "温湿度计 3 Mini"
     };
     const POLL_INTERVAL = 10000;
+    const OFFLINE_THRESHOLD = 2 * 60 * 60 * 1000;
     const MOBILE_QUERY = "(max-width: 680px)";
     const state = {
       chartHours: 24,
@@ -573,11 +583,31 @@
       const firstTime = new Date(items[0].timestamp).getTime();
       const lastTime = new Date(items.at(-1).timestamp).getTime();
       const timeSpan = Math.max(lastTime - firstTime, 1);
+      const offlineRanges = [];
 
-      const x = (item) => padding.left
-        + ((new Date(item.timestamp).getTime() - firstTime) / timeSpan) * plotWidth;
+      for (let index = 1; index < items.length; index++) {
+        const previousTime = new Date(items[index - 1].timestamp).getTime();
+        const currentTime = new Date(items[index].timestamp).getTime();
+        if (currentTime - previousTime > OFFLINE_THRESHOLD) {
+          offlineRanges.push({ start: previousTime, end: currentTime });
+        }
+      }
+
+      const xAtTime = (time) => padding.left
+        + ((time - firstTime) / timeSpan) * plotWidth;
+      const x = (item) => xAtTime(new Date(item.timestamp).getTime());
       const y = (value, scale) => padding.top
         + (1 - (Number(value) - scale.min) / Math.max(scale.max - scale.min, 1)) * plotHeight;
+
+      const offlineBlocks = offlineRanges.map((range) => {
+        const blockX = xAtTime(range.start);
+        const blockWidth = xAtTime(range.end) - blockX;
+        return `
+          <rect x="${blockX.toFixed(2)}" y="${padding.top}" width="${blockWidth.toFixed(2)}"
+                height="${plotHeight}" fill="var(--offline)">
+            <title>离线：${escapeHtml(formatTime(range.start))} 至 ${escapeHtml(formatTime(range.end))}</title>
+          </rect>`;
+      }).join("");
 
       const axisOffset = mobile ? 6 : 10;
       const grid = Array.from({ length: mobile ? 4 : 5 }, (_, index) => {
@@ -622,14 +652,15 @@
       svg.setAttribute("width", String(width));
       svg.setAttribute("height", String(height));
       svg.innerHTML = `
+        ${offlineBlocks}
         ${grid}
         ${temperaturePoints
           ? `<polyline points="${temperaturePoints}" fill="none" stroke="#111" stroke-width="${strokeWidth}"
                        stroke-linejoin="round" stroke-linecap="round"/>`
           : ""}
         ${humidityPoints
-          ? `<polyline points="${humidityPoints}" fill="none" stroke="#707070" stroke-width="${strokeWidth}"
-                       stroke-dasharray="${mobile ? "5 4" : "7 6"}" stroke-linejoin="round" stroke-linecap="round"/>`
+          ? `<polyline points="${humidityPoints}" fill="none" stroke="var(--humidity)" stroke-width="${strokeWidth}"
+                       stroke-linejoin="round" stroke-linecap="round"/>`
           : ""}
         ${labels}`;
 
@@ -643,6 +674,9 @@
         summaries.push(
           `湿度 ${formatNumber(humidityScale.rawMin, 0)}% 至 ${formatNumber(humidityScale.rawMax, 0)}%`
         );
+      }
+      if (offlineRanges.length) {
+        summaries.push(`离线 ${offlineRanges.length} 段`);
       }
       $("#chartSummary").textContent = summaries.join(mobile ? " · " : "　");
     }
