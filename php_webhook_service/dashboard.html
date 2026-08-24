@@ -154,6 +154,27 @@
 
     .range-buttons { display: flex; gap: 0; }
 
+    .chart-controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+    .day-navigation { display: inline-grid; grid-template-columns: 40px minmax(118px, auto) 40px; align-items: stretch; }
+    .day-navigation[hidden] { display: none; }
+    .day-navigation button { padding: 8px 10px; font-size: 18px; line-height: 1; }
+    .day-navigation button + button { border-left: 0; }
+    .day-navigation button:disabled { cursor: not-allowed; }
+    .day-navigation button:disabled:hover { background: var(--paper); color: var(--ink); }
+    .day-label {
+      display: grid;
+      min-width: 118px;
+      border: 1px solid var(--ink);
+      border-left: 0;
+      place-items: center;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .calendar-open { display: inline-flex; align-items: center; gap: 7px; }
+    .calendar-open svg { width: 16px; height: 16px; }
+
     .legend {
       display: flex;
       align-items: center;
@@ -228,6 +249,78 @@
     #historyPanel { margin-top: 24px; }
     #historyToggle { padding: 6px 12px; }
 
+    .calendar-dialog {
+      width: 100vw;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      border: 0;
+      padding: 0;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .calendar-dialog::backdrop { background: rgba(0, 0, 0, .28); }
+    .calendar-shell {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      width: min(1440px, 100%);
+      height: 100%;
+      margin: 0 auto;
+      padding: 22px 28px 28px;
+    }
+    .calendar-header {
+      display: grid;
+      grid-template-columns: 40px 1fr 40px;
+      align-items: center;
+      border-bottom: 1px solid var(--ink);
+      padding-bottom: 16px;
+    }
+    .calendar-header h2 { grid-column: 2; text-align: center; font-size: 18px; }
+    .calendar-header button { width: 40px; height: 40px; padding: 0; font-size: 20px; }
+    .calendar-close { grid-column: 3; }
+    .calendar-month-nav {
+      display: grid;
+      grid-template-columns: 40px minmax(140px, auto) 40px;
+      justify-content: center;
+      align-items: stretch;
+      padding: 18px 0;
+    }
+    .calendar-month-nav button { padding: 8px; font-size: 18px; line-height: 1; }
+    .calendar-month-nav button + button { border-left: 0; }
+    .calendar-month-title {
+      display: grid;
+      border: 1px solid var(--ink);
+      border-left: 0;
+      place-items: center;
+      padding: 7px 16px;
+      font-variant-numeric: tabular-nums;
+    }
+    .calendar-content { min-height: 0; overflow: auto; }
+    .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .calendar-weekdays span { padding: 7px 8px; color: var(--muted); font-size: 11px; text-align: center; }
+    .calendar-day {
+      position: relative;
+      min-height: 112px;
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      padding: 9px;
+      overflow: hidden;
+      text-align: left;
+    }
+    .calendar-day:nth-child(7n) { border-right: 1px solid var(--line); }
+    .calendar-day:nth-last-child(-n + 7) { border-bottom: 1px solid var(--line); }
+    .calendar-day + .calendar-day { border-left: 1px solid var(--line); }
+    .calendar-day:hover, .calendar-day.selected { background: var(--soft); color: var(--ink); }
+    .calendar-day.outside { background: var(--soft); color: #aaa; }
+    .calendar-day.future { cursor: not-allowed; color: #bbb; }
+    .calendar-day.today .calendar-day-number { border-bottom: 2px solid var(--ink); }
+    .calendar-day-number { position: relative; z-index: 1; display: inline-block; font-size: 12px; }
+    .calendar-sparkline { position: absolute; inset: 32px 8px 20px; width: calc(100% - 16px); height: calc(100% - 52px); }
+    .calendar-day-range { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 10px; }
+    .calendar-loading { grid-column: 1 / -1; padding: 48px; color: var(--muted); text-align: center; }
+
     @media (max-width: 680px) {
       .page { padding: 0 16px 40px; }
       header { min-height: 48px; padding-top: 14px; }
@@ -236,12 +329,23 @@
       .reading-value { font-size: clamp(52px, 16vw, 80px); }
       .reading-value small { margin-left: 5px; }
       .section-head { align-items: flex-start; flex-direction: column; }
+      .chart-controls { width: 100%; justify-content: space-between; }
+      .range-buttons { order: 1; width: 100%; }
+      .range-buttons button { flex: 1; padding-inline: 7px; }
+      .day-navigation, .calendar-open { order: 2; }
       .history-head { flex-direction: row; align-items: center; }
       .legend { flex-wrap: wrap; gap: 8px 14px; }
       .filters { grid-template-columns: 1fr; }
       .filters button { width: 100%; }
       .chart-empty { min-height: 220px; }
       #historyToggle { width: auto; }
+      .calendar-shell { padding: 12px 10px 16px; }
+      .calendar-header { padding-bottom: 10px; }
+      .calendar-month-nav { padding: 10px 0; }
+      .calendar-weekdays span { padding-inline: 2px; }
+      .calendar-day { min-height: 76px; padding: 6px; }
+      .calendar-sparkline { inset: 27px 4px 16px; width: calc(100% - 8px); height: calc(100% - 43px); }
+      .calendar-day-range { right: 4px; bottom: 3px; font-size: 8px; }
       th:nth-child(4), td:nth-child(4),
       th:nth-child(5), td:nth-child(5) { display: none; }
     }
@@ -285,10 +389,24 @@
             </div>
             <p id="chartSummary" class="metric-note">加载中</p>
           </div>
-          <div class="range-buttons" aria-label="时间范围">
-            <button type="button" data-hours="24" class="active">24小时</button>
-            <button type="button" data-hours="168">7天</button>
-            <button type="button" data-hours="720">30天</button>
+          <div class="chart-controls">
+            <div class="range-buttons" aria-label="时间范围">
+              <button type="button" data-mode="day">按天</button>
+              <button type="button" data-hours="24" class="active">24小时</button>
+              <button type="button" data-hours="168">7天</button>
+              <button type="button" data-hours="720">30天</button>
+            </div>
+            <div id="dayNavigation" class="day-navigation" hidden>
+              <button id="previousDay" type="button" title="上一天" aria-label="上一天">&#8592;</button>
+              <span id="selectedDayLabel" class="day-label"></span>
+              <button id="nextDay" type="button" title="下一天" aria-label="下一天">&#8594;</button>
+            </div>
+            <button id="calendarOpen" class="calendar-open" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                <path d="M6 2v4M18 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/>
+              </svg>
+              日历
+            </button>
           </div>
         </div>
         <div id="chartWrap" class="chart-wrap">
@@ -333,6 +451,26 @@
     </main>
   </div>
 
+  <dialog id="calendarDialog" class="calendar-dialog" aria-labelledby="calendarHeading">
+    <div class="calendar-shell">
+      <div class="calendar-header">
+        <h2 id="calendarHeading">每日温度曲线</h2>
+        <button id="calendarClose" class="calendar-close" type="button" title="关闭" aria-label="关闭">&#215;</button>
+      </div>
+      <div class="calendar-month-nav">
+        <button id="previousMonth" type="button" title="上个月" aria-label="上个月">&#8592;</button>
+        <span id="calendarMonthTitle" class="calendar-month-title"></span>
+        <button id="nextMonth" type="button" title="下个月" aria-label="下个月">&#8594;</button>
+      </div>
+      <div class="calendar-content">
+        <div class="calendar-weekdays" aria-hidden="true">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const API = {
       latestTemperature: "index.php?action=latest&field=temperature",
@@ -347,9 +485,16 @@
     const POLL_INTERVAL = 10000;
     const OFFLINE_THRESHOLD = 2 * 60 * 60 * 1000;
     const MOBILE_QUERY = "(max-width: 680px)";
+    const now = new Date();
     const state = {
+      chartMode: "range",
       chartHours: 24,
       chartItems: [],
+      selectedDay: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+      calendarMonth: new Date(now.getFullYear(), now.getMonth(), 1),
+      calendarItems: [],
+      chartRequestId: 0,
+      calendarRequestId: 0,
       latestOk: false,
       historyOpen: false,
       refreshing: false,
@@ -433,6 +578,28 @@
       return new Date(date.getTime() - offset).toISOString().slice(0, 16);
     }
 
+    function startOfDay(date) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    function addDays(date, amount) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+    }
+
+    function dayKey(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatDay(date) {
+      const prefix = date.getTime() === startOfDay(new Date()).getTime() ? "今天 · " : "";
+      return prefix + new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric", month: "2-digit", day: "2-digit", weekday: "short"
+      }).format(date);
+    }
+
     async function getJson(url) {
       const response = await fetch(url, {
         headers: { "Accept": "application/json" },
@@ -508,21 +675,59 @@
     }
 
     async function loadRange(hours) {
+      const requestId = ++state.chartRequestId;
+      state.chartMode = "range";
       state.chartHours = hours;
       $$(".range-buttons button").forEach((button) => {
-        button.classList.toggle("active", Number(button.dataset.hours) === hours);
+        button.classList.toggle("active", Boolean(button.dataset.hours)
+          && Number(button.dataset.hours) === hours);
       });
+      $("#dayNavigation").hidden = true;
 
       const from = new Date(Date.now() - hours * 3600000).toISOString();
       const url = `${API.readings}&from=${encodeURIComponent(from)}&limit=25000`;
 
       try {
         const data = await getJson(url);
+        if (requestId !== state.chartRequestId) return;
         state.chartItems = data.items
           .filter((item) => item.temperature != null || item.humidity != null)
           .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         renderChart();
       } catch (error) {
+        if (requestId !== state.chartRequestId) return;
+        state.chartItems = [];
+        renderChart("曲线加载失败");
+        console.error(error);
+      }
+    }
+
+    async function loadDay(date) {
+      const requestId = ++state.chartRequestId;
+      state.chartMode = "day";
+      state.chartHours = 24;
+      state.selectedDay = startOfDay(date);
+      $$(".range-buttons button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.mode === "day");
+      });
+      $("#dayNavigation").hidden = false;
+      $("#selectedDayLabel").textContent = formatDay(state.selectedDay);
+      $("#nextDay").disabled = addDays(state.selectedDay, 1) > new Date();
+
+      const from = state.selectedDay;
+      const to = new Date(addDays(from, 1).getTime() - 1);
+      const url = `${API.readings}&from=${encodeURIComponent(from.toISOString())}`
+        + `&to=${encodeURIComponent(to.toISOString())}&limit=25000`;
+
+      try {
+        const data = await getJson(url);
+        if (requestId !== state.chartRequestId) return;
+        state.chartItems = data.items
+          .filter((item) => item.temperature != null || item.humidity != null)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        renderChart();
+      } catch (error) {
+        if (requestId !== state.chartRequestId) return;
         state.chartItems = [];
         renderChart("曲线加载失败");
         console.error(error);
@@ -580,8 +785,12 @@
         humidityAll.map((item) => Number(item.humidity)),
         3
       );
-      const firstTime = new Date(items[0].timestamp).getTime();
-      const lastTime = new Date(items.at(-1).timestamp).getTime();
+      const firstTime = state.chartMode === "day"
+        ? state.selectedDay.getTime()
+        : new Date(items[0].timestamp).getTime();
+      const lastTime = state.chartMode === "day"
+        ? addDays(state.selectedDay, 1).getTime()
+        : new Date(items.at(-1).timestamp).getTime();
       const timeSpan = Math.max(lastTime - firstTime, 1);
       const offlineRanges = [];
 
@@ -681,6 +890,92 @@
       $("#chartSummary").textContent = summaries.join(mobile ? " · " : "　");
     }
 
+    function sparkline(items) {
+      const values = items.filter((item) => item.temperature != null);
+      if (values.length < 2) return "";
+      const temperatures = values.map((item) => Number(item.temperature));
+      const min = Math.min(...temperatures);
+      const max = Math.max(...temperatures);
+      const span = Math.max(max - min, 1);
+      const start = startOfDay(new Date(values[0].timestamp)).getTime();
+      const daySpan = addDays(new Date(start), 1).getTime() - start;
+      const points = downsample(values, 70).map((item) => {
+        const x = ((new Date(item.timestamp).getTime() - start) / daySpan) * 100;
+        const y = 25 - ((Number(item.temperature) - min) / span) * 22;
+        return `${Math.max(0, Math.min(100, x)).toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      return `<svg class="calendar-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points="${points}" fill="none" stroke="#111" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      </svg><span class="calendar-day-range">${formatNumber(min)}°–${formatNumber(max)}°</span>`;
+    }
+
+    async function loadCalendar() {
+      const requestId = ++state.calendarRequestId;
+      const monthStart = state.calendarMonth;
+      const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+      $("#calendarMonthTitle").textContent = new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric", month: "long"
+      }).format(monthStart);
+      $("#nextMonth").disabled = monthEnd > new Date();
+      $("#calendarGrid").innerHTML = '<div class="calendar-loading">加载中</div>';
+
+      try {
+        const inclusiveMonthEnd = new Date(monthEnd.getTime() - 1);
+        const url = `${API.readings}&from=${encodeURIComponent(monthStart.toISOString())}`
+          + `&to=${encodeURIComponent(inclusiveMonthEnd.toISOString())}&limit=25000`;
+        const data = await getJson(url);
+        if (requestId !== state.calendarRequestId) return;
+        state.calendarItems = data.items.filter((item) => item.temperature != null);
+        renderCalendar();
+      } catch (error) {
+        if (requestId !== state.calendarRequestId) return;
+        $("#calendarGrid").innerHTML = '<div class="calendar-loading">日历数据加载失败</div>';
+        console.error(error);
+      }
+    }
+
+    function renderCalendar() {
+      const monthStart = state.calendarMonth;
+      const mondayOffset = (monthStart.getDay() + 6) % 7;
+      const gridStart = addDays(monthStart, -mondayOffset);
+      const today = startOfDay(new Date());
+      const byDay = state.calendarItems.reduce((groups, item) => {
+        const key = dayKey(new Date(item.timestamp));
+        (groups[key] ||= []).push(item);
+        return groups;
+      }, {});
+
+      $("#calendarGrid").innerHTML = Array.from({ length: 42 }, (_, index) => {
+        const date = addDays(gridStart, index);
+        const key = dayKey(date);
+        const outside = date.getMonth() !== monthStart.getMonth();
+        const future = date > today;
+        const selected = key === dayKey(state.selectedDay);
+        const classes = ["calendar-day", outside && "outside", future && "future",
+          selected && "selected", date.getTime() === today.getTime() && "today"]
+          .filter(Boolean).join(" ");
+        const items = (byDay[key] || [])
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        return `<button type="button" class="${classes}" data-date="${key}" ${future ? "disabled" : ""}
+                  aria-label="查看 ${key} 温度曲线">
+          <span class="calendar-day-number">${date.getDate()}</span>
+          ${sparkline(items)}
+        </button>`;
+      }).join("");
+    }
+
+    function openCalendar() {
+      state.calendarMonth = new Date(state.selectedDay.getFullYear(), state.selectedDay.getMonth(), 1);
+      $("#calendarDialog").showModal();
+      document.body.style.overflow = "hidden";
+      loadCalendar();
+    }
+
+    function closeCalendar() {
+      $("#calendarDialog").close();
+      document.body.style.overflow = "";
+    }
+
     async function loadHistory(event) {
       event?.preventDefault();
       const button = $("#queryButton");
@@ -738,7 +1033,35 @@
     }
 
     $$(".range-buttons button").forEach((button) => {
-      button.addEventListener("click", () => loadRange(Number(button.dataset.hours)));
+      button.addEventListener("click", () => {
+        if (button.dataset.mode === "day") {
+          loadDay(state.selectedDay);
+        } else {
+          loadRange(Number(button.dataset.hours));
+        }
+      });
+    });
+    $("#previousDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, -1)));
+    $("#nextDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, 1)));
+    $("#calendarOpen").addEventListener("click", openCalendar);
+    $("#calendarClose").addEventListener("click", closeCalendar);
+    $("#previousMonth").addEventListener("click", () => {
+      state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() - 1, 1);
+      loadCalendar();
+    });
+    $("#nextMonth").addEventListener("click", () => {
+      state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1, 1);
+      loadCalendar();
+    });
+    $("#calendarGrid").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-date]");
+      if (!button || button.disabled) return;
+      const [year, month, day] = button.dataset.date.split("-").map(Number);
+      closeCalendar();
+      loadDay(new Date(year, month - 1, day));
+    });
+    $("#calendarDialog").addEventListener("close", () => {
+      document.body.style.overflow = "";
     });
     $("#historyToggle").addEventListener("click", toggleHistory);
     $("#historyForm").addEventListener("submit", loadHistory);
