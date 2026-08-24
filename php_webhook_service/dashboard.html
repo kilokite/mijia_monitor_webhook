@@ -174,6 +174,9 @@
     }
     .calendar-open { display: inline-flex; align-items: center; gap: 7px; }
     .calendar-open svg { width: 16px; height: 16px; }
+    .chart-zoom { display: flex; }
+    .chart-zoom button { display: grid; width: 36px; height: 36px; place-items: center; padding: 0; font-size: 18px; line-height: 1; }
+    .chart-zoom button + button { border-left: 0; }
 
     .legend {
       display: flex;
@@ -213,7 +216,24 @@
       background: var(--paper);
     }
 
-    #chart { display: block; width: 100%; height: auto; }
+    #chart { display: block; width: 100%; height: auto; touch-action: pan-y; }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 3;
+      top: 10px;
+      min-width: 150px;
+      border: 1px solid var(--ink);
+      padding: 8px 10px;
+      background: var(--paper);
+      pointer-events: none;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .chart-tooltip[hidden] { display: none; }
+    .chart-tooltip.align-left { transform: translateX(-100%); }
+    .chart-tooltip strong { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 600; }
+    .chart-tooltip span { display: block; color: var(--muted); }
+    .chart-tooltip .temperature-value { color: var(--ink); }
     .chart-empty { display: grid; min-height: 340px; place-items: center; color: var(--muted); }
 
     .filters {
@@ -263,7 +283,7 @@
     .calendar-dialog::backdrop { background: rgba(0, 0, 0, .28); }
     .calendar-shell {
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
       width: min(1440px, 100%);
       height: 100%;
       margin: 0 auto;
@@ -296,6 +316,9 @@
       padding: 7px 16px;
       font-variant-numeric: tabular-nums;
     }
+    .calendar-metric-switch { display: flex; justify-content: center; padding-bottom: 14px; }
+    .calendar-metric-switch button { min-width: 92px; }
+    .calendar-metric-switch button + button { border-left: 0; }
     .calendar-content { min-height: 0; overflow: auto; }
     .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
     .calendar-weekdays span { padding: 7px 8px; color: var(--muted); font-size: 11px; text-align: center; }
@@ -316,9 +339,29 @@
     .calendar-day.outside { background: var(--soft); color: #aaa; }
     .calendar-day.future { cursor: not-allowed; color: #bbb; }
     .calendar-day.today .calendar-day-number { border-bottom: 2px solid var(--ink); }
-    .calendar-day-number { position: relative; z-index: 1; display: inline-block; font-size: 12px; }
+    .calendar-day-number {
+      position: absolute;
+      z-index: 1;
+      top: 8px;
+      left: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .calendar-day-reading {
+      position: absolute;
+      z-index: 1;
+      top: 7px;
+      right: 9px;
+      display: flex;
+      gap: 7px;
+      color: var(--ink);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
     .calendar-sparkline { position: absolute; inset: 32px 8px 20px; width: calc(100% - 16px); height: calc(100% - 52px); }
-    .calendar-day-range { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 10px; }
+    .calendar-day-range { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 10px; text-align: right; }
+    .calendar-day-range span { display: block; }
     .calendar-loading { grid-column: 1 / -1; padding: 48px; color: var(--muted); text-align: center; }
 
     @media (max-width: 680px) {
@@ -332,7 +375,7 @@
       .chart-controls { width: 100%; justify-content: space-between; }
       .range-buttons { order: 1; width: 100%; }
       .range-buttons button { flex: 1; padding-inline: 7px; }
-      .day-navigation, .calendar-open { order: 2; }
+      .day-navigation, .chart-zoom, .calendar-open { order: 2; }
       .history-head { flex-direction: row; align-items: center; }
       .legend { flex-wrap: wrap; gap: 8px 14px; }
       .filters { grid-template-columns: 1fr; }
@@ -342,10 +385,14 @@
       .calendar-shell { padding: 12px 10px 16px; }
       .calendar-header { padding-bottom: 10px; }
       .calendar-month-nav { padding: 10px 0; }
+      .calendar-metric-switch { padding-bottom: 10px; }
+      .calendar-metric-switch button { min-width: 0; padding-inline: 10px; }
       .calendar-weekdays span { padding-inline: 2px; }
       .calendar-day { min-height: 76px; padding: 6px; }
-      .calendar-sparkline { inset: 27px 4px 16px; width: calc(100% - 8px); height: calc(100% - 43px); }
-      .calendar-day-range { right: 4px; bottom: 3px; font-size: 8px; }
+      .calendar-day-number { top: 5px; left: 6px; }
+      .calendar-day-reading { top: 20px; right: auto; left: 6px; flex-direction: column; gap: 0; font-size: 9px; }
+      .calendar-sparkline { inset: 42px 4px 4px; width: calc(100% - 8px); height: calc(100% - 46px); }
+      .calendar-day-range { display: none; }
       th:nth-child(4), td:nth-child(4),
       th:nth-child(5), td:nth-child(5) { display: none; }
     }
@@ -401,6 +448,11 @@
               <span id="selectedDayLabel" class="day-label"></span>
               <button id="nextDay" type="button" title="下一天" aria-label="下一天">&#8594;</button>
             </div>
+            <div class="chart-zoom" aria-label="曲线缩放">
+              <button id="chartZoomOut" type="button" title="缩小" aria-label="缩小" disabled>&#8722;</button>
+              <button id="chartZoomIn" type="button" title="放大" aria-label="放大" disabled>&#43;</button>
+              <button id="chartZoomReset" type="button" title="重置缩放" aria-label="重置缩放" disabled>&#8634;</button>
+            </div>
             <button id="calendarOpen" class="calendar-open" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                 <path d="M6 2v4M18 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/>
@@ -454,13 +506,18 @@
   <dialog id="calendarDialog" class="calendar-dialog" aria-labelledby="calendarHeading">
     <div class="calendar-shell">
       <div class="calendar-header">
-        <h2 id="calendarHeading">每日温度曲线</h2>
+        <h2 id="calendarHeading">每日温湿度曲线</h2>
         <button id="calendarClose" class="calendar-close" type="button" title="关闭" aria-label="关闭">&#215;</button>
       </div>
       <div class="calendar-month-nav">
         <button id="previousMonth" type="button" title="上个月" aria-label="上个月">&#8592;</button>
         <span id="calendarMonthTitle" class="calendar-month-title"></span>
         <button id="nextMonth" type="button" title="下个月" aria-label="下个月">&#8594;</button>
+      </div>
+      <div class="calendar-metric-switch" aria-label="日历曲线类型">
+        <button type="button" data-calendar-metric="temperature" class="active" aria-pressed="true">温度</button>
+        <button type="button" data-calendar-metric="humidity" aria-pressed="false">湿度</button>
+        <button type="button" data-calendar-metric="both" aria-pressed="false">同时显示</button>
       </div>
       <div class="calendar-content">
         <div class="calendar-weekdays" aria-hidden="true">
@@ -490,9 +547,11 @@
       chartMode: "range",
       chartHours: 24,
       chartItems: [],
+      chartView: null,
       selectedDay: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
       calendarMonth: new Date(now.getFullYear(), now.getMonth(), 1),
       calendarItems: [],
+      calendarMetric: "temperature",
       chartRequestId: 0,
       calendarRequestId: 0,
       latestOk: false,
@@ -676,6 +735,7 @@
 
     async function loadRange(hours) {
       const requestId = ++state.chartRequestId;
+      state.chartView = null;
       state.chartMode = "range";
       state.chartHours = hours;
       $$(".range-buttons button").forEach((button) => {
@@ -704,6 +764,7 @@
 
     async function loadDay(date) {
       const requestId = ++state.chartRequestId;
+      state.chartView = null;
       state.chartMode = "day";
       state.chartHours = 24;
       state.selectedDay = startOfDay(date);
@@ -734,12 +795,38 @@
       }
     }
 
+    function chartBaseDomain() {
+      if (state.chartItems.length === 0) return null;
+      const start = state.chartMode === "day"
+        ? state.selectedDay.getTime()
+        : new Date(state.chartItems[0].timestamp).getTime();
+      const rawEnd = state.chartMode === "day"
+        ? addDays(state.selectedDay, 1).getTime()
+        : new Date(state.chartItems.at(-1).timestamp).getTime();
+      return { start, end: Math.max(rawEnd, start + 1) };
+    }
+
     function renderChart(errorText = "") {
       const wrap = $("#chartWrap");
-      const items = state.chartItems;
-      if (errorText || items.length === 0) {
+      const allItems = state.chartItems;
+      if (errorText || allItems.length === 0) {
         wrap.innerHTML = `<div class="chart-empty">${escapeHtml(errorText || "暂无温湿度数据")}</div>`;
         $("#chartSummary").textContent = "无可用数据";
+        updateZoomButtons();
+        return;
+      }
+
+      const baseDomain = chartBaseDomain();
+      const firstTime = state.chartView?.start ?? baseDomain.start;
+      const lastTime = state.chartView?.end ?? baseDomain.end;
+      const items = allItems.filter((item) => {
+        const time = new Date(item.timestamp).getTime();
+        return time >= firstTime && time <= lastTime;
+      });
+      if (items.length === 0) {
+        wrap.innerHTML = '<div class="chart-empty">当前缩放范围暂无数据</div>';
+        $("#chartSummary").textContent = "可缩小或重置查看完整曲线";
+        updateZoomButtons();
         return;
       }
 
@@ -785,12 +872,6 @@
         humidityAll.map((item) => Number(item.humidity)),
         3
       );
-      const firstTime = state.chartMode === "day"
-        ? state.selectedDay.getTime()
-        : new Date(items[0].timestamp).getTime();
-      const lastTime = state.chartMode === "day"
-        ? addDays(state.selectedDay, 1).getTime()
-        : new Date(items.at(-1).timestamp).getTime();
       const timeSpan = Math.max(lastTime - firstTime, 1);
       const offlineRanges = [];
 
@@ -849,8 +930,8 @@
           ).join(" ")
         : "";
       const labelItems = mobile
-        ? [items[0], items.at(-1)]
-        : [items[0], items[Math.floor((items.length - 1) / 2)], items.at(-1)];
+        ? [{ timestamp: firstTime }, { timestamp: lastTime }]
+        : [{ timestamp: firstTime }, { timestamp: firstTime + timeSpan / 2 }, { timestamp: lastTime }];
       const labels = labelItems.map((item, index, list) => `
           <text x="${x(item)}" y="${height - (mobile ? 8 : 12)}"
                 text-anchor="${index === 0 ? "start" : index === list.length - 1 ? "end" : "middle"}"
@@ -871,7 +952,13 @@
           ? `<polyline points="${humidityPoints}" fill="none" stroke="var(--humidity)" stroke-width="${strokeWidth}"
                        stroke-linejoin="round" stroke-linecap="round"/>`
           : ""}
-        ${labels}`;
+        ${labels}
+        <g id="chartCursor" visibility="hidden" pointer-events="none">
+          <line id="chartCursorLine" y1="${padding.top}" y2="${height - padding.bottom}"
+                stroke="#707070" stroke-width="1" stroke-dasharray="3 3"/>
+          <circle id="chartTemperatureCursor" r="4" fill="#fff" stroke="#111" stroke-width="2"/>
+          <circle id="chartHumidityCursor" r="4" fill="#fff" stroke="#888" stroke-width="2"/>
+        </g>`;
 
       const summaries = [];
       if (temperatureScale) {
@@ -887,26 +974,220 @@
       if (offlineRanges.length) {
         summaries.push(`离线 ${offlineRanges.length} 段`);
       }
+      if (state.chartView) {
+        summaries.push("已缩放");
+      }
       $("#chartSummary").textContent = summaries.join(mobile ? " · " : "　");
+
+      $("#chartTooltip")?.remove();
+      wrap.insertAdjacentHTML("beforeend", `
+        <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>`);
+      setupChartInteraction({
+        svg, wrap, tooltip: $("#chartTooltip"), items, width, padding, plotWidth,
+        firstTime, lastTime, temperatureScale, humidityScale, xAtTime, y
+      });
+      updateZoomButtons();
     }
 
-    function sparkline(items) {
-      const values = items.filter((item) => item.temperature != null);
-      if (values.length < 2) return "";
-      const temperatures = values.map((item) => Number(item.temperature));
-      const min = Math.min(...temperatures);
-      const max = Math.max(...temperatures);
+    function updateZoomButtons() {
+      const base = chartBaseDomain();
+      const currentSpan = base
+        ? (state.chartView?.end ?? base.end) - (state.chartView?.start ?? base.start)
+        : 0;
+      const minimumSpan = base ? Math.min(15 * 60 * 1000, base.end - base.start) : 0;
+      $("#chartZoomIn").disabled = !base || currentSpan <= minimumSpan + 1;
+      $("#chartZoomOut").disabled = !state.chartView;
+      $("#chartZoomReset").disabled = !state.chartView;
+    }
+
+    function setChartSpan(targetSpan, anchorRatio = .5, sourceDomain = null) {
+      const base = chartBaseDomain();
+      if (!base) return;
+      const baseSpan = base.end - base.start;
+      const minimumSpan = Math.min(15 * 60 * 1000, baseSpan);
+      const span = Math.max(minimumSpan, Math.min(baseSpan, targetSpan));
+      const current = sourceDomain || state.chartView || base;
+      const ratio = Math.max(0, Math.min(1, anchorRatio));
+      const anchorTime = current.start + (current.end - current.start) * ratio;
+      let start = anchorTime - span * ratio;
+      start = Math.max(base.start, Math.min(start, base.end - span));
+      state.chartView = span >= baseSpan - 1 ? null : { start, end: start + span };
+      renderChart();
+    }
+
+    function zoomChart(factor, anchorRatio = .5) {
+      const base = chartBaseDomain();
+      if (!base) return;
+      const current = state.chartView || base;
+      setChartSpan((current.end - current.start) * factor, anchorRatio, current);
+    }
+
+    function nearestItem(items, targetTime) {
+      let low = 0;
+      let high = items.length - 1;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (new Date(items[middle].timestamp).getTime() < targetTime) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      const current = items[low];
+      const previous = items[Math.max(0, low - 1)];
+      return Math.abs(new Date(previous.timestamp).getTime() - targetTime)
+        <= Math.abs(new Date(current.timestamp).getTime() - targetTime)
+        ? previous
+        : current;
+    }
+
+    function setupChartInteraction(context) {
+      const { svg, wrap, tooltip, items, width, padding, plotWidth,
+        firstTime, lastTime, temperatureScale, humidityScale, xAtTime, y } = context;
+      const cursor = $("#chartCursor");
+      const cursorLine = $("#chartCursorLine");
+      const temperatureCursor = $("#chartTemperatureCursor");
+      const humidityCursor = $("#chartHumidityCursor");
+
+      const showAt = (clientX) => {
+        const rect = svg.getBoundingClientRect();
+        if (!rect.width) return;
+        const svgX = ((clientX - rect.left) / rect.width) * width;
+        if (svgX < padding.left || svgX > width - padding.right) {
+          cursor.setAttribute("visibility", "hidden");
+          tooltip.hidden = true;
+          return;
+        }
+        const ratio = (svgX - padding.left) / plotWidth;
+        const item = nearestItem(items, firstTime + (lastTime - firstTime) * ratio);
+        const itemX = xAtTime(new Date(item.timestamp).getTime());
+        cursor.setAttribute("visibility", "visible");
+        cursorLine.setAttribute("x1", itemX);
+        cursorLine.setAttribute("x2", itemX);
+
+        const setPoint = (element, value, scale) => {
+          if (value == null || !scale) {
+            element.style.display = "none";
+            return;
+          }
+          element.style.display = "";
+          element.setAttribute("cx", itemX);
+          element.setAttribute("cy", y(value, scale));
+        };
+        setPoint(temperatureCursor, item.temperature, temperatureScale);
+        setPoint(humidityCursor, item.humidity, humidityScale);
+
+        tooltip.innerHTML = `
+          <strong>${escapeHtml(formatTime(item.timestamp))}</strong>
+          <span class="temperature-value">温度 ${escapeHtml(formatNumber(item.temperature))} °C</span>
+          <span>湿度 ${escapeHtml(formatNumber(item.humidity, 0))} %</span>`;
+        const wrapRect = wrap.getBoundingClientRect();
+        const localX = clientX - wrapRect.left;
+        tooltip.classList.toggle("align-left", localX > wrapRect.width * .65);
+        tooltip.style.left = `${localX + (localX > wrapRect.width * .65 ? -12 : 12)}px`;
+        tooltip.hidden = false;
+      };
+
+      svg.onpointerdown = (event) => showAt(event.clientX);
+      svg.onpointermove = (event) => showAt(event.clientX);
+      svg.onpointerleave = (event) => {
+        if (event.pointerType === "touch") return;
+        cursor.setAttribute("visibility", "hidden");
+        tooltip.hidden = true;
+      };
+      svg.onwheel = (event) => {
+        event.preventDefault();
+        const rect = svg.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1,
+          (event.clientX - rect.left - (padding.left / width) * rect.width)
+          / ((plotWidth / width) * rect.width)
+        ));
+        zoomChart(event.deltaY < 0 ? .75 : 1.35, ratio);
+      };
+
+      let pinch = null;
+      svg.ontouchstart = (event) => {
+        if (event.touches.length !== 2) return;
+        event.preventDefault();
+        const distance = Math.abs(event.touches[1].clientX - event.touches[0].clientX);
+        const rect = svg.getBoundingClientRect();
+        const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+        pinch = {
+          distance: Math.max(distance, 1),
+          lastDistance: Math.max(distance, 1),
+          domain: state.chartView || chartBaseDomain(),
+          anchorRatio: Math.max(0, Math.min(1,
+            (centerX - rect.left - (padding.left / width) * rect.width)
+            / Math.max((plotWidth / width) * rect.width, 1)
+          ))
+        };
+      };
+      svg.ontouchmove = (event) => {
+        if (!pinch || event.touches.length !== 2) return;
+        event.preventDefault();
+        pinch.lastDistance = Math.max(Math.abs(event.touches[1].clientX - event.touches[0].clientX), 1);
+      };
+      svg.ontouchend = () => {
+        if (!pinch) return;
+        const domain = pinch.domain;
+        setChartSpan((domain.end - domain.start) * pinch.distance / pinch.lastDistance,
+          pinch.anchorRatio, domain);
+        pinch = null;
+      };
+    }
+
+    function metricStats(items, field) {
+      const values = items.filter((item) => item[field] != null);
+      if (values.length === 0) return null;
+      const numbers = values.map((item) => Number(item[field]));
+      const min = Math.min(...numbers);
+      const max = Math.max(...numbers);
       const span = Math.max(max - min, 1);
       const start = startOfDay(new Date(values[0].timestamp)).getTime();
       const daySpan = addDays(new Date(start), 1).getTime() - start;
       const points = downsample(values, 70).map((item) => {
         const x = ((new Date(item.timestamp).getTime() - start) / daySpan) * 100;
-        const y = 25 - ((Number(item.temperature) - min) / span) * 22;
+        const y = 25 - ((Number(item[field]) - min) / span) * 22;
         return `${Math.max(0, Math.min(100, x)).toFixed(1)},${y.toFixed(1)}`;
       }).join(" ");
-      return `<svg class="calendar-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
-        <polyline points="${points}" fill="none" stroke="#111" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-      </svg><span class="calendar-day-range">${formatNumber(min)}°–${formatNumber(max)}°</span>`;
+      return {
+        min,
+        max,
+        average: numbers.reduce((sum, value) => sum + value, 0) / numbers.length,
+        points: values.length > 1 ? points : ""
+      };
+    }
+
+    function sparkline(items) {
+      const showTemperature = state.calendarMetric !== "humidity";
+      const showHumidity = state.calendarMetric !== "temperature";
+      const temperature = showTemperature ? metricStats(items, "temperature") : null;
+      const humidity = showHumidity ? metricStats(items, "humidity") : null;
+      if (!temperature && !humidity) return "";
+
+      const lines = [
+        temperature?.points
+          ? `<polyline data-metric="temperature" points="${temperature.points}" fill="none" stroke="#111"
+                       stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+          : "",
+        humidity?.points
+          ? `<polyline data-metric="humidity" points="${humidity.points}" fill="none" stroke="#888"
+                       stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+          : ""
+      ].join("");
+      const chart = lines
+        ? `<svg class="calendar-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>`
+        : "";
+      const readings = [
+        temperature ? `<span>${formatNumber(temperature.average)}°C</span>` : "",
+        humidity ? `<span>${formatNumber(humidity.average, 0)}%</span>` : ""
+      ].join("");
+      const ranges = [
+        temperature ? `<span>${formatNumber(temperature.min)}°–${formatNumber(temperature.max)}°</span>` : "",
+        humidity ? `<span>${formatNumber(humidity.min, 0)}%–${formatNumber(humidity.max, 0)}%</span>` : ""
+      ].join("");
+      return `<span class="calendar-day-reading">${readings}</span>
+        ${chart}<span class="calendar-day-range">${ranges}</span>`;
     }
 
     async function loadCalendar() {
@@ -925,7 +1206,8 @@
           + `&to=${encodeURIComponent(inclusiveMonthEnd.toISOString())}&limit=25000`;
         const data = await getJson(url);
         if (requestId !== state.calendarRequestId) return;
-        state.calendarItems = data.items.filter((item) => item.temperature != null);
+        state.calendarItems = data.items
+          .filter((item) => item.temperature != null || item.humidity != null);
         renderCalendar();
       } catch (error) {
         if (requestId !== state.calendarRequestId) return;
@@ -957,7 +1239,7 @@
         const items = (byDay[key] || [])
           .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         return `<button type="button" class="${classes}" data-date="${key}" ${future ? "disabled" : ""}
-                  aria-label="查看 ${key} 温度曲线">
+                  aria-label="查看 ${key} 温湿度曲线">
           <span class="calendar-day-number">${date.getDate()}</span>
           ${sparkline(items)}
         </button>`;
@@ -1043,6 +1325,12 @@
     });
     $("#previousDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, -1)));
     $("#nextDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, 1)));
+    $("#chartZoomIn").addEventListener("click", () => zoomChart(.5));
+    $("#chartZoomOut").addEventListener("click", () => zoomChart(2));
+    $("#chartZoomReset").addEventListener("click", () => {
+      state.chartView = null;
+      renderChart();
+    });
     $("#calendarOpen").addEventListener("click", openCalendar);
     $("#calendarClose").addEventListener("click", closeCalendar);
     $("#previousMonth").addEventListener("click", () => {
@@ -1052,6 +1340,16 @@
     $("#nextMonth").addEventListener("click", () => {
       state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1, 1);
       loadCalendar();
+    });
+    $$('[data-calendar-metric]').forEach((button) => {
+      button.addEventListener("click", () => {
+        state.calendarMetric = button.dataset.calendarMetric;
+        $$('[data-calendar-metric]').forEach((item) => {
+          item.classList.toggle("active", item === button);
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+        renderCalendar();
+      });
     });
     $("#calendarGrid").addEventListener("click", (event) => {
       const button = event.target.closest("[data-date]");
