@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>环境数据分析</title>
+  <style>
+    :root {
+      --ink: #111;
+      --paper: #fff;
+      --surface: #fff;
+      --muted: #707070;
+      --line: #d8d8d8;
+      --grid: #ededed;
+      --primary: #111;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 14px/1.5 Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    button { font: inherit; }
+    button:focus-visible, a:focus-visible { outline: 3px solid rgba(0, 0, 0, .22); outline-offset: 2px; }
+
+    .page { width: min(1180px, 100%); margin: 0 auto; padding: 0 28px 56px; }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 58px;
+      border-bottom: 1px solid var(--ink);
+    }
+
+    nav { display: flex; gap: 18px; font-size: 13px; }
+    nav a { color: var(--muted); text-decoration: none; }
+    nav a[aria-current="page"], nav a:hover { color: var(--ink); }
+
+    .sync { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+    .sync-dot { width: 7px; height: 7px; background: var(--primary); }
+    .sync-dot.loading { animation: pulse .8s ease-in-out infinite; }
+    .sync-dot.error { border: 1px solid var(--ink); background: var(--surface); }
+    @keyframes pulse { 50% { opacity: .25; } }
+
+    .heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 34px 0 24px;
+    }
+
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 30px; font-weight: 500; }
+    h2 { font-size: 15px; font-weight: 500; }
+    .subtitle { margin-top: 5px; color: var(--muted); }
+
+    .controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .controls button {
+      min-height: 36px;
+      border: 1px solid var(--ink);
+      border-radius: 0;
+      padding: 7px 13px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .controls button + button { border-left: 0; }
+    .controls button:hover, .controls button.active { background: var(--ink); color: var(--surface); }
+    .controls button:disabled { cursor: wait; opacity: .55; }
+    #refreshButton { margin-left: 10px; border-left: 1px solid var(--ink); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--ink);
+    }
+    .stat { min-width: 0; padding: 22px 20px 20px 0; }
+    .stat + .stat { border-left: 1px solid var(--line); padding-left: 20px; }
+    .stat-label { color: var(--muted); font-size: 12px; }
+    .stat-value { margin-top: 8px; font-size: 31px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .stat-value small { margin-left: 4px; color: var(--muted); font-size: 13px; font-weight: 400; }
+    .stat-note { min-height: 21px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+    section { border-bottom: 1px solid var(--ink); padding: 28px 0 30px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+    .section-note { color: var(--muted); font-size: 12px; }
+
+    .metric-switch, .playback-mode { display: flex; }
+    .metric-switch button, .playback-mode button, .playback-action {
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 6px 11px;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .metric-switch button + button, .playback-mode button + button { border-left: 0; }
+    .metric-switch button.active, .playback-mode button.active { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+    .playback-controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .playback-action { display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border-color: var(--ink); color: var(--ink); font-size: 15px; line-height: 1; }
+    .playback-action:hover { background: var(--ink); color: var(--surface); }
+    .playback-action:disabled { cursor: not-allowed; opacity: .4; }
+    .playback-status { min-width: 128px; color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .chart-wrap { position: relative; width: 100%; }
+    .chart { display: block; width: 100%; height: 310px; overflow: visible; }
+    .chart [hidden] { display: none; }
+    .chart text { fill: var(--muted); font: 11px Arial, "Microsoft YaHei", sans-serif; letter-spacing: 0; }
+    .chart .grid { stroke: var(--grid); stroke-width: 1; }
+    .chart .axis { stroke: var(--line); stroke-width: 1; }
+    .chart .scatter-point { fill: var(--ink); fill-opacity: .36; }
+    .chart .scatter-point.current { fill: #d00000; fill-opacity: 1; }
+    .chart .scatter-trace { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-opacity: .65; vector-effect: non-scaling-stroke; }
+    .chart .scatter-focus { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+    .chart .range-line { stroke: var(--primary); stroke-width: 5; }
+    .chart .average { fill: var(--surface); stroke: var(--ink); stroke-width: 1.5; }
+
+    .tooltip {
+      position: absolute;
+      z-index: 2;
+      min-width: 142px;
+      border: 1px solid var(--ink);
+      padding: 8px 10px;
+      background: var(--surface);
+      pointer-events: none;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .tooltip[hidden] { display: none; }
+    .tooltip strong, .tooltip span { display: block; }
+    .tooltip strong { margin-bottom: 3px; font-weight: 500; }
+    .tooltip span { color: var(--muted); }
+
+    .heatmap { display: grid; grid-template-columns: repeat(24, minmax(22px, 1fr)); gap: 4px; }
+    .heat-cell {
+      display: grid;
+      min-width: 0;
+      min-height: 78px;
+      align-content: space-between;
+      border: 1px solid var(--line);
+      padding: 7px 4px;
+      background: var(--cell-color, var(--surface));
+      color: var(--cell-ink, var(--ink));
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .heat-cell.empty { background: var(--surface); color: var(--muted); }
+    .heat-hour { font-size: 10px; }
+    .heat-value { font-size: 12px; font-weight: 500; }
+    .heat-count { font-size: 9px; opacity: .7; }
+    .heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .heat-ramp { width: 120px; height: 8px; background: linear-gradient(90deg, #f5f5f5, #999, #5f5f5f); }
+
+    .empty { display: grid; min-height: 260px; place-items: center; color: var(--muted); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 760px) {
+      .page { padding: 0 16px 40px; }
+      .heading { align-items: stretch; flex-direction: column; padding-top: 26px; }
+      .controls { justify-content: flex-start; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; }
+      .stat:nth-child(4) { border-top: 1px solid var(--line); }
+      .heatmap { grid-template-columns: repeat(12, minmax(22px, 1fr)); }
+      .heat-cell { min-height: 66px; }
+    }
+
+    @media (max-width: 430px) {
+      h1 { font-size: 25px; }
+      .controls button { flex: 1; padding-inline: 8px; }
+      #refreshButton { flex-basis: 100%; margin: 8px 0 0; }
+      .stat { padding: 17px 12px 16px 0; }
+      .stat + .stat { padding-left: 12px; }
+      .stat-value { font-size: 25px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .playback-controls { width: 100%; justify-content: flex-start; }
+      .playback-status { min-width: 0; flex: 1; text-align: right; }
+      .heatmap { grid-template-columns: repeat(6, minmax(36px, 1fr)); gap: 5px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sync-dot.loading { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <nav aria-label="页面导航">
+        <a href="index.php">实时</a>
+        <a href="index.php?action=analytics" aria-current="page">分析</a>
+      </nav>
+      <div class="sync" aria-live="polite">
+        <span id="syncDot" class="sync-dot"></span>
+        <span id="syncText">正在加载</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="heading">
+        <div>
+          <h1>环境数据分析</h1>
+          <p id="rangeSummary" class="subtitle">读取传感器记录</p>
+        </div>
+        <div class="controls" aria-label="分析时间范围">
+          <button type="button" data-hours="24">24小时</button>
+          <button type="button" data-hours="168" class="active">7天</button>
+          <button type="button" data-hours="720">30天</button>
+          <button type="button" id="refreshButton">刷新数据</button>
+        </div>
+      </div>
+
+      <div class="stats" aria-label="摘要数据">
+        <div class="stat">
+          <div class="stat-label">有效记录</div>
+          <div id="sampleCount" class="stat-value">--<small>条</small></div>
+          <div id="pairCount" class="stat-note">暂无数据</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">平均温度</div>
+          <div id="averageTemperature" class="stat-value">--<small>°C</small></div>
+          <div id="temperatureRange" class="stat-note">暂无数据</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">平均湿度</div>
+          <div id="averageHumidity" class="stat-value">--<small>%</small></div>
+          <div id="humidityRange" class="stat-note">暂无数据</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">温湿度相关</div>
+          <div id="correlation" class="stat-value">--</div>
+          <div id="correlationNote" class="stat-note">Pearson r</div>
+        </div>
+      </div>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>温湿度散点分布</h2>
+            <p id="scatterNote" class="section-note">--</p>
+          </div>
+          <div class="playback-controls" aria-label="散点播放控制">
+            <div class="playback-mode" aria-label="播放模式">
+              <button type="button" data-playback-mode="point" class="active" aria-pressed="true">逐点</button>
+              <button type="button" data-playback-mode="day" aria-pressed="false">逐天</button>
+              <button type="button" data-playback-mode="line" aria-pressed="false">画线</button>
+            </div>
+            <button type="button" id="scatterPlay" class="playback-action" aria-label="播放" title="播放">&#9654;</button>
+            <button type="button" id="scatterReplay" class="playback-action" aria-label="重播" title="重播">&#8634;</button>
+            <span id="scatterPlaybackStatus" class="playback-status" aria-live="polite">完整分布</span>
+          </div>
+        </div>
+        <div id="scatterWrap" class="chart-wrap">
+          <svg id="scatterChart" class="chart" viewBox="0 0 1100 330" role="img" aria-labelledby="scatterTitle scatterDescription">
+            <title id="scatterTitle">温度与湿度散点分布</title>
+            <desc id="scatterDescription">横轴为温度，纵轴为湿度</desc>
+          </svg>
+          <div id="scatterTooltip" class="tooltip" hidden></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2 id="rangeTitle">分时温度区间</h2>
+            <p id="intervalNote" class="section-note">竖线为最低至最高值，圆点为平均值</p>
+          </div>
+          <div class="metric-switch" aria-label="统计指标">
+            <button type="button" data-metric="temperature" class="active" aria-pressed="true">温度</button>
+            <button type="button" data-metric="humidity" aria-pressed="false">湿度</button>
+          </div>
+        </div>
+        <div id="rangeWrap" class="chart-wrap">
+          <svg id="rangeChart" class="chart" viewBox="0 0 1100 310" role="img" aria-labelledby="rangeChartTitle rangeChartDescription">
+            <title id="rangeChartTitle">分时数据区间</title>
+            <desc id="rangeChartDescription">各时间段的最低值、平均值和最高值</desc>
+          </svg>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2 id="heatTitle">24 小时温度分布</h2>
+            <p class="section-note">按本地小时聚合</p>
+          </div>
+        </div>
+        <div id="heatmap" class="heatmap" role="img" aria-label="24 小时平均温度分布"></div>
+        <div id="heatLegend" class="heat-legend" hidden>
+          <span id="heatMin">低</span><span class="heat-ramp"></span><span id="heatMax">高</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="index.php?action=statistics-script"></script>
+  <script>
+    const API = "index.php?action=readings";
+    const state = {
+      hours: 168,
+      metric: "temperature",
+      items: [],
+      intervals: { temperature: [], humidity: [] },
+      from: 0,
+      to: 0,
+      devices: 0,
+      truncated: false,
+      loading: false,
+      scatterMode: "point",
+      scatterPlaying: false,
+      scatterIndex: 0,
+      scatterPoints: [],
+      scatterDays: [],
+      scatterTimer: 0
+    };
+    const metricConfig = {
+      temperature: { label: "温度", unit: "°C", digits: 1 },
+      humidity: { label: "湿度", unit: "%", digits: 0 }
+    };
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+    function extent(values) {
+      return values.length ? [Math.min(...values), Math.max(...values)] : null;
+    }
+
+    function average(values) {
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    }
+
+    function formatValue(value, metric = state.metric) {
+      return value == null ? "--" : Number(value).toFixed(metricConfig[metric].digits);
+    }
+
+    function formatDate(date, includeDate = true) {
+      return new Intl.DateTimeFormat("zh-CN", includeDate
+        ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+        : { hour: "2-digit", minute: "2-digit" }).format(date);
+    }
+
+    function escapeHtml(value) {
+      return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+    }
+
+    function setLoading(loading, failed = false) {
+      state.loading = loading;
+      $("#refreshButton").disabled = loading;
+      $$("[data-hours]").forEach((button) => { button.disabled = loading; });
+      $("#syncDot").className = `sync-dot${loading ? " loading" : failed ? " error" : ""}`;
+      $("#syncText").textContent = loading ? "正在加载" : failed ? "加载失败" : "数据已更新";
+      updateScatterControls();
+    }
+
+    async function loadData() {
+      if (state.loading) return;
+      stopScatterAnimation(true);
+      setLoading(true);
+      const to = Date.now();
+      const from = to - state.hours * 3600000;
+      const queryFrom = new Date(from - TimeWeighted.VALID_FOR_MS).toISOString();
+      state.from = from;
+      state.to = to;
+      try {
+        const response = await fetch(`${API}&from=${encodeURIComponent(queryFrom)}&to=${encodeURIComponent(new Date(to).toISOString())}&limit=25000`, {
+          headers: { Accept: "application/json" }, cache: "no-store"
+        });
+        if (!response.ok) throw new Error(`API ${response.status}`);
+        const data = await response.json();
+        const sourceItems = data.items
+          .filter((item) => item.temperature != null || item.humidity != null)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp) || Number(a.id) - Number(b.id));
+        state.items = sourceItems.filter((item) => new Date(item.timestamp).getTime() >= from
+          && new Date(item.timestamp).getTime() < to);
+        state.devices = new Set(sourceItems.map((item) => item.address)).size;
+        state.truncated = data.items.length >= 25000;
+        for (const field of ["temperature", "humidity"]) {
+          state.intervals[field] = TimeWeighted.segments(sourceItems, field, from, to);
+        }
+        render();
+        setLoading(false);
+      } catch (error) {
+        state.items = [];
+        state.intervals = { temperature: [], humidity: [] };
+        state.devices = 0;
+        state.truncated = false;
+        render("数据加载失败");
+        setLoading(false, true);
+        console.error(error);
+      }
+    }
+
+    function render(errorText = "") {
+      renderStats();
+      renderScatter(errorText);
+      renderRange(errorText);
+      renderHeatmap();
+      const label = state.hours === 24 ? "最近 24 小时" : state.hours === 168 ? "最近 7 天" : "最近 30 天";
+      $("#rangeSummary").textContent = `${label} · ${state.items.length} 条记录 · ${state.devices} 台设备${state.truncated ? " · 已达查询上限，数据可能不完整" : ""}`;
+    }
+
+    function renderStats() {
+      const temperatureStats = TimeWeighted.summarize(state.intervals.temperature);
+      const humidityStats = TimeWeighted.summarize(state.intervals.humidity);
+      const pairs = pairedData();
+      const coefficient = correlation(pairs);
+
+      $("#sampleCount").innerHTML = `${state.items.length}<small>条</small>`;
+      $("#pairCount").textContent = `${pairs.length} 对温湿度成对读数`;
+      $("#averageTemperature").innerHTML = `${formatValue(temperatureStats.average, "temperature")}<small>°C</small>`;
+      $("#averageHumidity").innerHTML = `${formatValue(humidityStats.average, "humidity")}<small>%</small>`;
+      for (const [field, stats] of [["temperature", temperatureStats], ["humidity", humidityStats]]) {
+        const coverage = TimeWeighted.coverage(stats, state.to - state.from, state.devices);
+        $(`#${field}Range`).textContent = stats.duration
+          ? `${formatValue(stats.minimum, field)}–${formatValue(stats.maximum, field)} ${metricConfig[field].unit} · 有效覆盖 ${coverage.toFixed(0)}%`
+          : "未知 · 无有效时长";
+      }
+      $("#correlation").textContent = coefficient == null ? "--" : coefficient.toFixed(2);
+      $("#correlationNote").textContent = `Pearson r · ${pairs.length} 对数据`;
+    }
+
+    function pairedData() {
+      return state.items.filter((item) => item.temperature != null && item.humidity != null
+        && Number.isFinite(Number(item.temperature)) && Number.isFinite(Number(item.humidity)))
+        .map((item) => ({
+          time: new Date(item.timestamp),
+          temperature: Number(item.temperature),
+          humidity: Number(item.humidity)
+        }));
+    }
+
+    function correlation(data) {
+      if (data.length < 2) return null;
+      const temperatureMean = average(data.map((item) => item.temperature));
+      const humidityMean = average(data.map((item) => item.humidity));
+      let covariance = 0, temperatureVariance = 0, humidityVariance = 0;
+      for (const item of data) {
+        const temperatureDelta = item.temperature - temperatureMean;
+        const humidityDelta = item.humidity - humidityMean;
+        covariance += temperatureDelta * humidityDelta;
+        temperatureVariance += temperatureDelta ** 2;
+        humidityVariance += humidityDelta ** 2;
+      }
+      const denominator = Math.sqrt(temperatureVariance * humidityVariance);
+      return denominator ? covariance / denominator : null;
+    }
+
+    function paddedDomain(values) {
+      const [minimum, maximum] = extent(values);
+      const padding = Math.max((maximum - minimum) * .12, state.metric === "temperature" ? 1 : 4);
+      return [minimum - padding, maximum + padding];
+    }
+
+    function renderScatter(errorText) {
+      stopScatterAnimation(false);
+      const svg = $("#scatterChart");
+      const data = pairedData();
+      const width = Math.max(320, svg.clientWidth || 1100);
+      svg.setAttribute("viewBox", `0 0 ${width} 330`);
+      if (errorText || !data.length) {
+        state.scatterPoints = [];
+        state.scatterDays = [];
+        svg.innerHTML = `<text x="${width / 2}" y="155" text-anchor="middle">${escapeHtml(errorText || "暂无数据")}</text>`;
+        $("#scatterNote").textContent = "无成对温湿度数据";
+        $("#scatterPlaybackStatus").textContent = "无可播放数据";
+        updateScatterControls();
+        return;
+      }
+
+      const box = { left: 52, right: width - 18, top: 20, bottom: 278 };
+      const [temperatureMin, temperatureMax] = domain(data.map((item) => item.temperature), 1);
+      const [humidityMin, humidityMax] = domain(data.map((item) => item.humidity), 4);
+      const x = (value) => box.left + (value - temperatureMin) / (temperatureMax - temperatureMin) * (box.right - box.left);
+      const y = (value) => box.bottom - (value - humidityMin) / (humidityMax - humidityMin) * (box.bottom - box.top);
+      const sampled = data.length <= 800 ? data : data.filter((_, index) => index % Math.ceil(data.length / 800) === 0);
+      const points = sampled.map((item) => ({ ...item, x: x(item.temperature), y: y(item.humidity) }));
+      const xTickCount = width < 560 ? 4 : 6;
+      const xTicks = Array.from({ length: xTickCount }, (_, index) => temperatureMin + (temperatureMax - temperatureMin) * index / (xTickCount - 1));
+      const yTicks = Array.from({ length: 5 }, (_, index) => humidityMin + (humidityMax - humidityMin) * index / 4);
+      const grid = yTicks.map((value) => `<line class="grid" x1="${box.left}" y1="${y(value)}" x2="${box.right}" y2="${y(value)}" />`
+        + `<text x="${box.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatValue(value, "humidity")}</text>`).join("")
+        + xTicks.map((value) => `<line class="grid" x1="${x(value)}" y1="${box.top}" x2="${x(value)}" y2="${box.bottom}" />`
+          + `<text x="${x(value)}" y="298" text-anchor="middle">${formatValue(value, "temperature")}</text>`).join("");
+      const marks = points.map((point, index) => `<circle class="scatter-point" data-index="${index}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"><title>${formatValue(point.temperature, "temperature")} °C · ${formatValue(point.humidity, "humidity")} %</title></circle>`).join("");
+      const coefficient = correlation(data);
+
+      svg.innerHTML = `<title>温度与湿度散点分布</title><desc>${data.length} 对成对读数，Pearson 相关系数 ${coefficient == null ? "不可计算" : coefficient.toFixed(2)}</desc>`
+        + grid + `<line class="axis" x1="${box.left}" y1="${box.bottom}" x2="${box.right}" y2="${box.bottom}" />`
+        + `<line class="axis" x1="${box.left}" y1="${box.top}" x2="${box.left}" y2="${box.bottom}" />`
+        + `<text x="${box.left}" y="12">湿度 %</text><text x="${(box.left + box.right) / 2}" y="324" text-anchor="middle">温度 °C</text>`
+        + `<path id="scatterTrace" class="scatter-trace" d="" />` + marks
+        + `<circle id="scatterFocus" class="scatter-focus" r="5" hidden />`
+        + `<rect id="scatterHit" x="${box.left}" y="${box.top}" width="${box.right - box.left}" height="${box.bottom - box.top}" fill="transparent" />`;
+      state.scatterPoints = points.map((point, index) => ({
+        ...point,
+        element: svg.querySelector(`.scatter-point[data-index="${index}"]`)
+      }));
+      state.scatterDays = groupScatterDays(state.scatterPoints);
+      state.scatterIndex = 0;
+      $("#scatterNote").textContent = `${data.length} 对成对读数 · Pearson r ${coefficient == null ? "--" : coefficient.toFixed(2)}`;
+      $("#scatterPlaybackStatus").textContent = "完整分布";
+      updateScatterControls();
+      bindScatterTooltip(state.scatterPoints, box, width);
+    }
+
+    function domain(values, minimumPadding) {
+      const [minimum, maximum] = extent(values);
+      const padding = Math.max((maximum - minimum) * .08, minimumPadding);
+      return [minimum - padding, maximum + padding];
+    }
+
+    function bindScatterTooltip(points, box, width) {
+      const hit = $("#scatterHit");
+      const tooltip = $("#scatterTooltip");
+      const wrap = $("#scatterWrap");
+      hit.addEventListener("pointermove", (event) => {
+        const visiblePoints = points.filter((point) => !point.element.hasAttribute("hidden"));
+        if (!visiblePoints.length) return;
+        const rect = hit.getBoundingClientRect();
+        const viewX = box.left + (event.clientX - rect.left) / rect.width * (box.right - box.left);
+        const viewY = box.top + (event.clientY - rect.top) / rect.height * (box.bottom - box.top);
+        const nearest = visiblePoints.reduce((best, point) => (point.x - viewX) ** 2 + (point.y - viewY) ** 2
+          < (best.x - viewX) ** 2 + (best.y - viewY) ** 2 ? point : best);
+        $("#scatterFocus").setAttribute("cx", nearest.x); $("#scatterFocus").setAttribute("cy", nearest.y);
+        $("#scatterFocus").removeAttribute("hidden");
+        tooltip.innerHTML = `<strong>${escapeHtml(formatDate(nearest.time))}</strong>`
+          + `<span>温度 ${formatValue(nearest.temperature, "temperature")} °C</span>`
+          + `<span>湿度 ${formatValue(nearest.humidity, "humidity")} %</span>`;
+        tooltip.hidden = false;
+        const wrapRect = wrap.getBoundingClientRect();
+        const left = (nearest.x / width) * wrapRect.width;
+        tooltip.style.left = `${Math.max(0, Math.min(wrapRect.width - tooltip.offsetWidth, left + 10))}px`;
+        tooltip.style.top = `${Math.max(8, (nearest.y / 330) * wrapRect.height - tooltip.offsetHeight - 8)}px`;
+      });
+      hit.addEventListener("pointerleave", () => {
+        tooltip.hidden = true; $("#scatterFocus").setAttribute("hidden", "");
+      });
+    }
+
+    function localDayKey(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    }
+
+    function groupScatterDays(points) {
+      const days = new Map();
+      points.forEach((point, index) => {
+        const key = localDayKey(point.time);
+        if (!days.has(key)) days.set(key, { key, date: point.time, indices: [] });
+        days.get(key).indices.push(index);
+      });
+      return [...days.values()];
+    }
+
+    function setScatterPointsVisible(indices) {
+      const visible = new Set(indices);
+      state.scatterPoints.forEach((point, index) => {
+        point.element.toggleAttribute("hidden", !visible.has(index));
+        point.element.classList.remove("current");
+      });
+      $("#scatterTrace").setAttribute("d", "");
+      $("#scatterFocus").setAttribute("hidden", "");
+      $("#scatterTooltip").hidden = true;
+    }
+
+    function updateScatterControls() {
+      const hasData = state.scatterPoints.length > 0 && !state.loading;
+      const play = $("#scatterPlay");
+      play.disabled = !hasData;
+      $("#scatterReplay").disabled = !hasData;
+      play.innerHTML = state.scatterPlaying ? "&#10074;&#10074;" : "&#9654;";
+      play.setAttribute("aria-label", state.scatterPlaying ? "暂停" : "播放");
+      play.title = state.scatterPlaying ? "暂停" : "播放";
+    }
+
+    function stopScatterAnimation(showAll = true) {
+      window.clearTimeout(state.scatterTimer);
+      state.scatterTimer = 0;
+      state.scatterPlaying = false;
+      if (showAll && state.scatterPoints.length) {
+        state.scatterPoints.forEach((point) => {
+          point.element.removeAttribute("hidden");
+          point.element.classList.remove("current");
+        });
+        $("#scatterTrace").setAttribute("d", "");
+        state.scatterIndex = 0;
+        $("#scatterPlaybackStatus").textContent = "完整分布";
+      }
+      updateScatterControls();
+    }
+
+    function finishScatterAnimation() {
+      window.clearTimeout(state.scatterTimer);
+      state.scatterTimer = 0;
+      state.scatterPlaying = false;
+      $("#scatterPlaybackStatus").textContent = "播放完成";
+      updateScatterControls();
+    }
+
+    function playScatter(restart = false) {
+      if (!state.scatterPoints.length) return;
+      if (restart || state.scatterIndex >= (state.scatterMode === "day" ? state.scatterDays.length : state.scatterPoints.length)) {
+        state.scatterIndex = 0;
+      }
+      state.scatterPlaying = true;
+      updateScatterControls();
+      if (state.scatterMode === "day") playNextDay();
+      else playNextPoint(restart || state.scatterIndex === 0, state.scatterMode === "line");
+    }
+
+    function playNextPoint(reset, drawLine) {
+      if (!state.scatterPlaying) return;
+      if (reset) setScatterPointsVisible([]);
+      if (state.scatterIndex >= state.scatterPoints.length) {
+        finishScatterAnimation();
+        return;
+      }
+      const point = state.scatterPoints[state.scatterIndex];
+      state.scatterPoints.forEach((item) => { item.element.classList.remove("current"); });
+      point.element.removeAttribute("hidden");
+      point.element.classList.add("current");
+      state.scatterIndex += 1;
+      if (drawLine) {
+        const path = state.scatterPoints.slice(0, state.scatterIndex)
+          .map((item, index) => `${index ? "L" : "M"}${item.x.toFixed(1)},${item.y.toFixed(1)}`)
+          .join(" ");
+        $("#scatterTrace").setAttribute("d", path);
+      }
+      $("#scatterPlaybackStatus").textContent = `${formatDate(point.time)} · ${state.scatterIndex}/${state.scatterPoints.length}`;
+      const delay = Math.max(20, Math.min(120, Math.round(10000 / state.scatterPoints.length)));
+      state.scatterTimer = window.setTimeout(() => playNextPoint(false, drawLine), delay);
+    }
+
+    function playNextDay() {
+      if (!state.scatterPlaying) return;
+      if (state.scatterIndex >= state.scatterDays.length) {
+        finishScatterAnimation();
+        return;
+      }
+      const day = state.scatterDays[state.scatterIndex];
+      setScatterPointsVisible(day.indices);
+      state.scatterIndex += 1;
+      $("#scatterPlaybackStatus").textContent = `${day.key} · ${day.indices.length} 点`;
+      state.scatterTimer = window.setTimeout(playNextDay, 900);
+    }
+
+    function groupIntervals() {
+      return TimeWeighted.buckets(state.intervals[state.metric], state.from, state.to,
+        state.hours === 24 ? "hour" : "day").map((group) => ({ ...group, date: new Date(group.start) }));
+    }
+
+    function renderRange(errorText) {
+      const svg = $("#rangeChart");
+      const groups = groupIntervals();
+      const width = Math.max(320, svg.clientWidth || 1100);
+      svg.setAttribute("viewBox", `0 0 ${width} 310`);
+      $("#rangeTitle").textContent = `分时${metricConfig[state.metric].label}区间`;
+      if (errorText || !groups.some((group) => group.duration > 0)) {
+        svg.innerHTML = `<text x="${width / 2}" y="155" text-anchor="middle">${escapeHtml(errorText || "暂无数据")}</text>`;
+        return;
+      }
+      const box = { left: 48, right: width - 16, top: 18, bottom: 268 };
+      const [yMin, yMax] = paddedDomain(groups.filter((group) => group.duration > 0)
+        .flatMap((group) => [group.minimum, group.maximum]));
+      const y = (value) => box.bottom - (value - yMin) / (yMax - yMin) * (box.bottom - box.top);
+      const step = (box.right - box.left) / groups.length;
+      const yTicks = Array.from({ length: 5 }, (_, index) => yMin + (yMax - yMin) * index / 4);
+      const grids = yTicks.map((value) => `<line class="grid" x1="${box.left}" y1="${y(value)}" x2="${box.right}" y2="${y(value)}" />`
+        + `<text x="${box.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatValue(value)}</text>`).join("");
+      const showEvery = Math.max(1, Math.ceil(groups.length / (width < 560 ? 5 : 10)));
+      const marks = groups.map((group, index) => {
+        const position = box.left + step * (index + .5);
+        const label = state.hours === 24
+          ? `${String(group.date.getHours()).padStart(2, "0")}:00`
+          : `${group.date.getMonth() + 1}/${group.date.getDate()}`;
+        const coverage = TimeWeighted.coverage(group, group.span, state.devices);
+        return `<g><title>${label} · ${group.duration ? `${formatValue(group.minimum)}–${formatValue(group.maximum)} ${metricConfig[state.metric].unit} · 平均 ${formatValue(group.average)} · 有效覆盖 ${coverage.toFixed(0)}%` : "未知"}</title>`
+          + (group.duration ? `<line class="range-line" x1="${position}" y1="${y(group.minimum)}" x2="${position}" y2="${y(group.maximum)}" />`
+            + `<circle class="average" cx="${position}" cy="${y(group.average)}" r="4" />`
+            : `<text x="${position}" y="${box.bottom - 6}" text-anchor="middle">--</text>`)
+          + (index % showEvery === 0 || index === groups.length - 1 ? `<text x="${position}" y="294" text-anchor="middle">${label}</text>` : "")
+          + `</g>`;
+      }).join("");
+      svg.innerHTML = `<title>分时${metricConfig[state.metric].label}区间</title><desc>${groups.length} 个时间段的最低值、平均值和最高值</desc>`
+        + grids + `<line class="axis" x1="${box.left}" y1="${box.bottom}" x2="${box.right}" y2="${box.bottom}" />` + marks;
+    }
+
+    function heatStyle(value, minimum, maximum) {
+      const ratio = maximum === minimum ? .5 : (value - minimum) / (maximum - minimum);
+      const gray = Math.round(245 - ratio * 150);
+      return `--cell-color:rgb(${gray},${gray},${gray});--cell-ink:${ratio > .62 ? "#fff" : "#111"}`;
+    }
+
+    function renderHeatmap() {
+      const groups = TimeWeighted.hourlyProfile(TimeWeighted.buckets(
+        state.intervals[state.metric], state.from, state.to));
+      const averages = groups.map((group) => group.average);
+      const values = averages.filter((value) => value != null);
+      const valueExtent = extent(values);
+      $("#heatTitle").textContent = `24 小时${metricConfig[state.metric].label}分布`;
+      $("#heatmap").setAttribute("aria-label", `24 小时平均${metricConfig[state.metric].label}分布`);
+      $("#heatmap").innerHTML = averages.map((value, hour) => value == null
+        ? `<div class="heat-cell empty" aria-label="${hour}时未知"><span class="heat-hour">${String(hour).padStart(2, "0")}</span><span class="heat-value">--</span><span class="heat-count">未知</span></div>`
+        : `<div class="heat-cell" style="${heatStyle(value, ...valueExtent)}" aria-label="${hour}时平均${formatValue(value)}${metricConfig[state.metric].unit}，有效覆盖${TimeWeighted.coverage(groups[hour], groups[hour].span, state.devices).toFixed(0)}%"><span class="heat-hour">${String(hour).padStart(2, "0")}</span><span class="heat-value">${formatValue(value)}</span><span class="heat-count">${TimeWeighted.coverage(groups[hour], groups[hour].span, state.devices).toFixed(0)}%</span></div>`).join("");
+      $("#heatLegend").hidden = !valueExtent;
+      if (valueExtent) {
+        $("#heatMin").textContent = `${formatValue(valueExtent[0])} ${metricConfig[state.metric].unit}`;
+        $("#heatMax").textContent = `${formatValue(valueExtent[1])} ${metricConfig[state.metric].unit}`;
+      }
+    }
+
+    $$("[data-hours]").forEach((button) => button.addEventListener("click", () => {
+      state.hours = Number(button.dataset.hours);
+      $$("[data-hours]").forEach((item) => item.classList.toggle("active", item === button));
+      loadData();
+    }));
+    $$("[data-metric]").forEach((button) => button.addEventListener("click", () => {
+      state.metric = button.dataset.metric;
+      $$("[data-metric]").forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      renderRange(""); renderHeatmap();
+    }));
+    $$("[data-playback-mode]").forEach((button) => button.addEventListener("click", () => {
+      stopScatterAnimation(true);
+      state.scatterMode = button.dataset.playbackMode;
+      $$("[data-playback-mode]").forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      const labels = { point: "逐点播放", day: "逐天播放", line: "画线播放" };
+      $("#scatterPlaybackStatus").textContent = labels[state.scatterMode];
+    }));
+    $("#scatterPlay").addEventListener("click", () => {
+      if (state.scatterPlaying) {
+        window.clearTimeout(state.scatterTimer);
+        state.scatterTimer = 0;
+        state.scatterPlaying = false;
+        $("#scatterPlaybackStatus").textContent += " · 已暂停";
+        updateScatterControls();
+      } else {
+        playScatter(false);
+      }
+    });
+    $("#scatterReplay").addEventListener("click", () => {
+      stopScatterAnimation(false);
+      playScatter(true);
+    });
+    $("#refreshButton").addEventListener("click", loadData);
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      stopScatterAnimation(true);
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => { renderScatter(""); renderRange(""); }, 100);
+    });
+    loadData();
+  </script>
+</body>
+</html>

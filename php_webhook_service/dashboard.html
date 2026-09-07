@@ -15,6 +15,10 @@
       --soft: #f6f6f6;
       --offline: rgba(255, 0, 0, .08);
       --offline-line: rgba(255, 0, 0, .2);
+      --change-temperature: #b34a36;
+      --change-humidity: #2874a6;
+      --change-battery: #8b6b18;
+      --signal: #267661;
     }
 
     * { box-sizing: border-box; }
@@ -37,11 +41,15 @@
     header {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: space-between;
       min-height: 56px;
       border-bottom: 1px solid var(--ink);
       padding: 18px 0 14px;
     }
+
+    nav { display: flex; gap: 18px; font-size: 13px; }
+    nav a { color: var(--muted); text-decoration: none; }
+    nav a[aria-current="page"], nav a:hover { color: var(--ink); }
 
     h2, p { margin: 0; }
     h2 { font-size: 14px; font-weight: 600; }
@@ -190,6 +198,23 @@
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { display: inline-block; width: 24px; border-top: 2px solid var(--ink); }
     .legend .humidity-line { border-top: 2px solid var(--humidity); }
+    .legend .signal-line { border-color: var(--signal); }
+    .chart-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; margin: -8px 0 16px; }
+    .chart-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; color: var(--ink); }
+    .chart-options input { appearance: auto; width: 15px; height: 15px; min-height: 0; margin: 0; padding: 0; accent-color: var(--ink); cursor: pointer; }
+    .chart-options input:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    .change-legend { flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; }
+    .legend [hidden], .change-legend[hidden] { display: none; }
+    .change-legend i { width: 0; height: 0; border: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--marker-color); }
+    .chart-surface { position: relative; }
+    .chart-surface[aria-busy="true"] #chart { opacity: .3; pointer-events: none; }
+    .chart-loading { position: absolute; z-index: 4; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 12px; background: rgba(255, 255, 255, .5); }
+    .chart-loading[hidden] { display: none; }
+    .chart-loading::before { content: ""; width: 12px; height: 12px; border: 1px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: chart-spin .8s linear infinite; }
+    @keyframes chart-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .chart-loading::before, .status-dot.refreshing { animation: none; }
+    }
     .legend .offline-block {
       height: 10px;
       border: 1px solid var(--offline-line);
@@ -211,6 +236,7 @@
 
     .chart-wrap {
       position: relative;
+      min-height: 340px;
       width: 100%;
       overflow: visible;
       background: var(--paper);
@@ -381,6 +407,7 @@
       .filters { grid-template-columns: 1fr; }
       .filters button { width: 100%; }
       .chart-empty { min-height: 220px; }
+      .chart-wrap { min-height: 220px; }
       #historyToggle { width: auto; }
       .calendar-shell { padding: 12px 10px 16px; }
       .calendar-header { padding-bottom: 10px; }
@@ -401,6 +428,10 @@
 <body>
   <div class="page">
     <header>
+      <nav aria-label="页面导航">
+        <a href="index.php" aria-current="page">实时</a>
+        <a href="index.php?action=analytics">分析</a>
+      </nav>
       <div class="status">
         <span id="statusDot" class="status-dot"></span>
         <span id="statusText">刷新中</span>
@@ -432,6 +463,7 @@
             <div class="legend">
               <span><i></i>温度 °C</span>
               <span><i class="humidity-line"></i>湿度 %</span>
+              <span id="signalLegend" hidden><i class="signal-line"></i>信号 dBm</span>
               <span><i class="offline-block"></i>离线</span>
             </div>
             <p id="chartSummary" class="metric-note">加载中</p>
@@ -461,8 +493,21 @@
             </button>
           </div>
         </div>
-        <div id="chartWrap" class="chart-wrap">
-          <svg id="chart" role="img" aria-label="温湿度历史曲线"></svg>
+        <div class="chart-options">
+          <label><input id="showChanges" type="checkbox" aria-controls="chartWrap">数据变化标记</label>
+          <label><input id="showSignal" type="checkbox" aria-controls="chartWrap">信号强度</label>
+        </div>
+        <div id="changeLegend" class="legend change-legend" hidden>
+          <span><i style="--marker-color:var(--change-temperature)"></i>温度变化</span>
+          <span><i style="--marker-color:var(--change-humidity)"></i>湿度变化</span>
+          <span><i style="--marker-color:var(--change-battery)"></i>电量变化</span>
+          <span><i style="--marker-color:var(--signal)"></i>信号变化</span>
+        </div>
+        <div id="chartSurface" class="chart-surface" aria-busy="false">
+          <div id="chartWrap" class="chart-wrap">
+            <svg id="chart" role="img" aria-label="温湿度历史曲线"></svg>
+          </div>
+          <div id="chartLoading" class="chart-loading" role="status" hidden>加载中</div>
         </div>
       </section>
 
@@ -528,6 +573,7 @@
     </div>
   </dialog>
 
+  <script src="index.php?action=statistics-script"></script>
   <script>
     const API = {
       latestTemperature: "index.php?action=latest&field=temperature",
@@ -548,9 +594,15 @@
       chartHours: 24,
       chartItems: [],
       chartView: null,
+      showChanges: false,
+      showSignal: false,
+      chartLoading: false,
+      chartError: "",
       selectedDay: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
       calendarMonth: new Date(now.getFullYear(), now.getMonth(), 1),
       calendarItems: [],
+      calendarStats: { temperature: new Map(), humidity: new Map() },
+      calendarDevices: 0,
       calendarMetric: "temperature",
       chartRequestId: 0,
       calendarRequestId: 0,
@@ -735,6 +787,7 @@
 
     async function loadRange(hours) {
       const requestId = ++state.chartRequestId;
+      setChartLoading(true);
       state.chartView = null;
       state.chartMode = "range";
       state.chartHours = hours;
@@ -759,11 +812,14 @@
         state.chartItems = [];
         renderChart("曲线加载失败");
         console.error(error);
+      } finally {
+        if (requestId === state.chartRequestId) setChartLoading(false);
       }
     }
 
     async function loadDay(date) {
       const requestId = ++state.chartRequestId;
+      setChartLoading(true);
       state.chartView = null;
       state.chartMode = "day";
       state.chartHours = 24;
@@ -792,7 +848,44 @@
         state.chartItems = [];
         renderChart("曲线加载失败");
         console.error(error);
+      } finally {
+        if (requestId === state.chartRequestId) setChartLoading(false);
       }
+    }
+
+    function setChartLoading(loading) {
+      state.chartLoading = loading;
+      if (loading) state.chartError = "";
+      $("#chartSurface").setAttribute("aria-busy", String(loading));
+      $("#chartLoading").hidden = !loading;
+      $("#chartTooltip")?.setAttribute("hidden", "");
+      updateZoomButtons();
+    }
+
+    const changeMetrics = [
+      { field: "temperature", label: "温度", color: "var(--change-temperature)" },
+      { field: "humidity", label: "湿度", color: "var(--change-humidity)" },
+      { field: "battery", label: "电量", color: "var(--change-battery)" },
+      { field: "rssi", label: "信号", color: "var(--signal)" }
+    ];
+
+    function readingChanges(items) {
+      const previousByDevice = new Map();
+      const changes = new Map();
+      // Compare before viewport filtering so zooming does not discard the baseline.
+      for (const item of items) {
+        const previous = previousByDevice.get(item.address) || {};
+        const fields = [];
+        for (const { field } of changeMetrics) {
+          if (item[field] == null || !Number.isFinite(Number(item[field]))) continue;
+          const value = Number(item[field]);
+          if (previous[field] != null && previous[field] !== value) fields.push(field);
+          previous[field] = value;
+        }
+        previousByDevice.set(item.address, previous);
+        changes.set(item, fields);
+      }
+      return changes;
     }
 
     function chartBaseDomain() {
@@ -806,7 +899,10 @@
       return { start, end: Math.max(rawEnd, start + 1) };
     }
 
-    function renderChart(errorText = "") {
+    function renderChart(errorText = state.chartError) {
+      state.chartError = errorText;
+      $("#changeLegend").hidden = !state.showChanges;
+      $("#signalLegend").hidden = !state.showSignal;
       const wrap = $("#chartWrap");
       const allItems = state.chartItems;
       if (errorText || allItems.length === 0) {
@@ -837,14 +933,19 @@
       const svg = $("#chart");
       const mobile = isMobile();
       const width = Math.max(wrap.clientWidth || 320, 280);
-      const height = mobile ? 220 : 340;
+      const markerHeight = state.showChanges ? 44 : 0;
+      const signalHeight = state.showSignal ? (mobile ? 120 : 140) : 0;
+      const mainHeight = (mobile ? 220 : 340) + markerHeight;
+      const height = mainHeight + signalHeight;
       const padding = mobile
         ? { top: 14, right: 32, bottom: 28, left: 32 }
         : { top: 25, right: 52, bottom: 44, left: 52 };
+      padding.top += markerHeight;
       const fontSize = mobile ? 10 : 12;
+      const axisOffset = mobile ? 6 : 10;
       const strokeWidth = mobile ? 1.5 : 2;
       const plotWidth = width - padding.left - padding.right;
-      const plotHeight = height - padding.top - padding.bottom;
+      const plotHeight = mainHeight - padding.top - padding.bottom;
       const maxPoints = Math.max(Math.floor(plotWidth), 80);
       const temperatureAll = items.filter((item) => item.temperature != null);
       const humidityAll = items.filter((item) => item.humidity != null);
@@ -889,6 +990,48 @@
       const y = (value, scale) => padding.top
         + (1 - (Number(value) - scale.min) / Math.max(scale.max - scale.min, 1)) * plotHeight;
 
+      const changes = state.showChanges ? readingChanges(allItems) : new Map();
+      const markers = state.showChanges ? changeMetrics.map(({ field, label, color }, row) => {
+        const changed = items.filter((item) => changes.get(item)?.includes(field));
+        const top = 5 + row * 10;
+        const path = changed.map((item) => {
+          const position = x(item);
+          return `M${(position - 3).toFixed(2)},${top}h6l-3,6Z`;
+        }).join(" ");
+        return `<path class="change-marker" data-field="${field}" data-count="${changed.length}" d="${path}" fill="${color}" fill-opacity=".8"><title>${label}变化 · ${changed.length} 次</title></path>`;
+      }).join("") : "";
+
+      const signalItems = items.filter((item) => item.rssi != null && Number.isFinite(Number(item.rssi)));
+      const signalScale = state.showSignal ? makeScale(signalItems.map((item) => Number(item.rssi)), 3) : null;
+      const signalTop = mainHeight + 5;
+      const signalBottom = height - padding.bottom;
+      const signalY = (value) => signalTop + (1 - (Number(value) - signalScale.min)
+        / (signalScale.max - signalScale.min)) * (signalBottom - signalTop);
+      let signalPlot = "";
+      if (state.showSignal) {
+        signalPlot = `<text x="${padding.left}" y="${signalTop - 12}" fill="var(--signal)" font-size="${fontSize}">信号 dBm</text>`;
+        if (signalScale) {
+          signalPlot += [0, .5, 1].map((ratio) => {
+            const value = signalScale.max - ratio * (signalScale.max - signalScale.min);
+            const position = signalY(value);
+            return `<line x1="${padding.left}" x2="${width - padding.right}" y1="${position}" y2="${position}" stroke="var(--line)"/>
+              <text x="${padding.left - axisOffset}" y="${position + 4}" text-anchor="end" fill="var(--signal)" font-size="${fontSize}">${value.toFixed(0)}</text>`;
+          }).join("");
+          let previous = null;
+          const signalPath = items.map((item) => {
+            if (item.rssi == null || !Number.isFinite(Number(item.rssi))) { previous = null; return ""; }
+            const connected = previous && previous.address === item.address
+              && new Date(item.timestamp) - new Date(previous.timestamp) <= OFFLINE_THRESHOLD;
+            previous = item;
+            const point = `${x(item).toFixed(2)},${signalY(item.rssi).toFixed(2)}`;
+            return connected ? `L${point}` : `M${point}L${point}`;
+          }).join(" ");
+          signalPlot += `<path id="signalCurve" d="${signalPath}" fill="none" stroke="var(--signal)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        } else {
+          signalPlot += `<text x="${padding.left + plotWidth / 2}" y="${(signalTop + signalBottom) / 2}" text-anchor="middle" fill="var(--muted)" font-size="${fontSize}">暂无信号数据</text>`;
+        }
+      }
+
       const offlineBlocks = offlineRanges.map((range) => {
         const blockX = xAtTime(range.start);
         const blockWidth = xAtTime(range.end) - blockX;
@@ -899,7 +1042,6 @@
           </rect>`;
       }).join("");
 
-      const axisOffset = mobile ? 6 : 10;
       const grid = Array.from({ length: mobile ? 4 : 5 }, (_, index) => {
         const last = mobile ? 3 : 4;
         const ratio = index / last;
@@ -941,9 +1083,11 @@
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.setAttribute("width", String(width));
       svg.setAttribute("height", String(height));
+      svg.setAttribute("aria-label", `温湿度历史曲线${state.showChanges ? "，含数据变化标记" : ""}${state.showSignal ? "，含信号强度曲线" : ""}`);
       svg.innerHTML = `
         ${offlineBlocks}
         ${grid}
+        ${markers}
         ${temperaturePoints
           ? `<polyline points="${temperaturePoints}" fill="none" stroke="#111" stroke-width="${strokeWidth}"
                        stroke-linejoin="round" stroke-linecap="round"/>`
@@ -952,12 +1096,14 @@
           ? `<polyline points="${humidityPoints}" fill="none" stroke="var(--humidity)" stroke-width="${strokeWidth}"
                        stroke-linejoin="round" stroke-linecap="round"/>`
           : ""}
+        ${signalPlot}
         ${labels}
         <g id="chartCursor" visibility="hidden" pointer-events="none">
           <line id="chartCursorLine" y1="${padding.top}" y2="${height - padding.bottom}"
                 stroke="#707070" stroke-width="1" stroke-dasharray="3 3"/>
           <circle id="chartTemperatureCursor" r="4" fill="#fff" stroke="#111" stroke-width="2"/>
           <circle id="chartHumidityCursor" r="4" fill="#fff" stroke="#888" stroke-width="2"/>
+          <circle id="chartSignalCursor" r="3" fill="#fff" stroke="var(--signal)" stroke-width="2"/>
         </g>`;
 
       const summaries = [];
@@ -974,6 +1120,7 @@
       if (offlineRanges.length) {
         summaries.push(`离线 ${offlineRanges.length} 段`);
       }
+      if (signalScale) summaries.push(`信号 ${formatNumber(signalScale.rawMin)} 至 ${formatNumber(signalScale.rawMax)} dBm`);
       if (state.chartView) {
         summaries.push("已缩放");
       }
@@ -984,7 +1131,7 @@
         <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>`);
       setupChartInteraction({
         svg, wrap, tooltip: $("#chartTooltip"), items, width, padding, plotWidth,
-        firstTime, lastTime, temperatureScale, humidityScale, xAtTime, y
+        firstTime, lastTime, temperatureScale, humidityScale, signalScale, signalY, changes, xAtTime, y
       });
       updateZoomButtons();
     }
@@ -995,9 +1142,9 @@
         ? (state.chartView?.end ?? base.end) - (state.chartView?.start ?? base.start)
         : 0;
       const minimumSpan = base ? Math.min(15 * 60 * 1000, base.end - base.start) : 0;
-      $("#chartZoomIn").disabled = !base || currentSpan <= minimumSpan + 1;
-      $("#chartZoomOut").disabled = !state.chartView;
-      $("#chartZoomReset").disabled = !state.chartView;
+      $("#chartZoomIn").disabled = state.chartLoading || !base || currentSpan <= minimumSpan + 1;
+      $("#chartZoomOut").disabled = state.chartLoading || !state.chartView;
+      $("#chartZoomReset").disabled = state.chartLoading || !state.chartView;
     }
 
     function setChartSpan(targetSpan, anchorRatio = .5, sourceDomain = null) {
@@ -1043,13 +1190,15 @@
 
     function setupChartInteraction(context) {
       const { svg, wrap, tooltip, items, width, padding, plotWidth,
-        firstTime, lastTime, temperatureScale, humidityScale, xAtTime, y } = context;
+        firstTime, lastTime, temperatureScale, humidityScale, signalScale, signalY, changes, xAtTime, y } = context;
       const cursor = $("#chartCursor");
       const cursorLine = $("#chartCursorLine");
       const temperatureCursor = $("#chartTemperatureCursor");
       const humidityCursor = $("#chartHumidityCursor");
+      const signalCursor = $("#chartSignalCursor");
 
       const showAt = (clientX) => {
+        if (state.chartLoading) return;
         const rect = svg.getBoundingClientRect();
         if (!rect.width) return;
         const svgX = ((clientX - rect.left) / rect.width) * width;
@@ -1076,11 +1225,19 @@
         };
         setPoint(temperatureCursor, item.temperature, temperatureScale);
         setPoint(humidityCursor, item.humidity, humidityScale);
+        signalCursor.style.display = signalScale && item.rssi != null ? "" : "none";
+        if (signalScale && item.rssi != null) {
+          signalCursor.setAttribute("cx", itemX);
+          signalCursor.setAttribute("cy", signalY(item.rssi));
+        }
 
         tooltip.innerHTML = `
           <strong>${escapeHtml(formatTime(item.timestamp))}</strong>
           <span class="temperature-value">温度 ${escapeHtml(formatNumber(item.temperature))} °C</span>
-          <span>湿度 ${escapeHtml(formatNumber(item.humidity, 0))} %</span>`;
+          <span>湿度 ${escapeHtml(formatNumber(item.humidity, 0))} %</span>
+          ${state.showSignal ? `<span>信号 ${escapeHtml(formatNumber(item.rssi))} dBm</span>` : ""}
+          ${state.showChanges ? `<span>变化：${changeMetrics.filter(({ field }) => changes.get(item)?.includes(field)).map(({ label }) => label).join("、") || "无已知变化"}</span>
+            ${changes.get(item)?.includes("battery") ? `<span>电量 ${escapeHtml(formatNumber(item.battery))} %</span>` : ""}` : ""}`;
         const wrapRect = wrap.getBoundingClientRect();
         const localX = clientX - wrapRect.left;
         tooltip.classList.toggle("align-left", localX > wrapRect.width * .65);
@@ -1136,14 +1293,13 @@
       };
     }
 
-    function metricStats(items, field) {
-      const values = items.filter((item) => item[field] != null);
-      if (values.length === 0) return null;
-      const numbers = values.map((item) => Number(item[field]));
-      const min = Math.min(...numbers);
-      const max = Math.max(...numbers);
+    function metricStats(items, field, stats) {
+      if (!stats?.duration) return null;
+      const values = items.filter((item) => item[field] != null && Number.isFinite(Number(item[field])));
+      const min = stats.minimum;
+      const max = stats.maximum;
       const span = Math.max(max - min, 1);
-      const start = startOfDay(new Date(values[0].timestamp)).getTime();
+      const start = stats.start;
       const daySpan = addDays(new Date(start), 1).getTime() - start;
       const points = downsample(values, 70).map((item) => {
         const x = ((new Date(item.timestamp).getTime() - start) / daySpan) * 100;
@@ -1153,17 +1309,19 @@
       return {
         min,
         max,
-        average: numbers.reduce((sum, value) => sum + value, 0) / numbers.length,
+        average: stats.average,
+        coverage: TimeWeighted.coverage(stats, stats.span, state.calendarDevices),
         points: values.length > 1 ? points : ""
       };
     }
 
-    function sparkline(items) {
+    function sparkline(items, stats) {
       const showTemperature = state.calendarMetric !== "humidity";
       const showHumidity = state.calendarMetric !== "temperature";
-      const temperature = showTemperature ? metricStats(items, "temperature") : null;
-      const humidity = showHumidity ? metricStats(items, "humidity") : null;
-      if (!temperature && !humidity) return "";
+      const temperature = showTemperature ? metricStats(items, "temperature", stats.temperature) : null;
+      const humidity = showHumidity ? metricStats(items, "humidity", stats.humidity) : null;
+      if (!temperature && !humidity) return stats.temperature || stats.humidity
+        ? '<span class="calendar-day-reading" title="未知 · 无有效时长">--</span>' : "";
 
       const lines = [
         temperature?.points
@@ -1179,8 +1337,8 @@
         ? `<svg class="calendar-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>`
         : "";
       const readings = [
-        temperature ? `<span>${formatNumber(temperature.average)}°C</span>` : "",
-        humidity ? `<span>${formatNumber(humidity.average, 0)}%</span>` : ""
+        showTemperature ? `<span title="平均温度 · 有效覆盖 ${(temperature?.coverage ?? 0).toFixed(0)}%">${formatNumber(temperature?.average)}°C</span>` : "",
+        showHumidity ? `<span title="平均湿度 · 有效覆盖 ${(humidity?.coverage ?? 0).toFixed(0)}%">${formatNumber(humidity?.average, 0)}%</span>` : ""
       ].join("");
       const ranges = [
         temperature ? `<span>${formatNumber(temperature.min)}°–${formatNumber(temperature.max)}°</span>` : "",
@@ -1194,6 +1352,8 @@
       const requestId = ++state.calendarRequestId;
       const monthStart = state.calendarMonth;
       const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+      const to = Math.min(monthEnd.getTime(), Date.now());
+      const queryFrom = new Date(monthStart.getTime() - TimeWeighted.VALID_FOR_MS);
       $("#calendarMonthTitle").textContent = new Intl.DateTimeFormat("zh-CN", {
         year: "numeric", month: "long"
       }).format(monthStart);
@@ -1201,13 +1361,21 @@
       $("#calendarGrid").innerHTML = '<div class="calendar-loading">加载中</div>';
 
       try {
-        const inclusiveMonthEnd = new Date(monthEnd.getTime() - 1);
-        const url = `${API.readings}&from=${encodeURIComponent(monthStart.toISOString())}`
-          + `&to=${encodeURIComponent(inclusiveMonthEnd.toISOString())}&limit=25000`;
+        const url = `${API.readings}&from=${encodeURIComponent(queryFrom.toISOString())}`
+          + `&to=${encodeURIComponent(new Date(to).toISOString())}&limit=25000`;
         const data = await getJson(url);
         if (requestId !== state.calendarRequestId) return;
-        state.calendarItems = data.items
+        const sourceItems = data.items
           .filter((item) => item.temperature != null || item.humidity != null);
+        state.calendarItems = sourceItems.filter((item) => new Date(item.timestamp).getTime() >= monthStart.getTime()
+          && new Date(item.timestamp).getTime() < to);
+        state.calendarDevices = new Set(sourceItems.map((item) => item.address)).size;
+        for (const field of ["temperature", "humidity"]) {
+          const intervals = TimeWeighted.segments(sourceItems, field, monthStart.getTime(), to);
+          state.calendarStats[field] = new Map(TimeWeighted.buckets(intervals, monthStart.getTime(), to, "day")
+            .map((group) => [dayKey(new Date(group.start)), group]));
+        }
+        if (data.items.length >= 25000) $("#calendarMonthTitle").textContent += " · 数据可能不完整";
         renderCalendar();
       } catch (error) {
         if (requestId !== state.calendarRequestId) return;
@@ -1241,7 +1409,7 @@
         return `<button type="button" class="${classes}" data-date="${key}" ${future ? "disabled" : ""}
                   aria-label="查看 ${key} 温湿度曲线">
           <span class="calendar-day-number">${date.getDate()}</span>
-          ${sparkline(items)}
+          ${sparkline(items, { temperature: state.calendarStats.temperature.get(key), humidity: state.calendarStats.humidity.get(key) })}
         </button>`;
       }).join("");
     }
@@ -1324,6 +1492,12 @@
       });
     });
     $("#previousDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, -1)));
+    for (const field of ["showChanges", "showSignal"]) {
+      $(`#${field}`).addEventListener("change", (event) => {
+        state[field] = event.target.checked;
+        renderChart();
+      });
+    }
     $("#nextDay").addEventListener("click", () => loadDay(addDays(state.selectedDay, 1)));
     $("#chartZoomIn").addEventListener("click", () => zoomChart(.5));
     $("#chartZoomOut").addEventListener("click", () => zoomChart(2));

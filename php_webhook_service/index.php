@@ -29,7 +29,17 @@ if ($method === 'OPTIONS') {
 if ($method === 'GET'
     && ($action === 'dashboard'
         || ($action === '' && ($path === '/' || str_ends_with($path, '/index.php'))))) {
-    serveDashboard();
+    serveFile('dashboard.html');
+}
+
+if ($method === 'GET'
+    && ($action === 'analytics' || str_ends_with($path, '/analytics.html'))) {
+    serveFile('analytics.html');
+}
+
+if ($method === 'GET'
+    && ($action === 'statistics-script' || str_ends_with($path, '/time-weighted.js'))) {
+    serveFile('time-weighted.js', 'application/javascript; charset=utf-8');
 }
 
 try {
@@ -279,15 +289,15 @@ function latestReading(PDO $pdo): never
     respond(200, serializeReading($reading));
 }
 
-function serveDashboard(): never
+function serveFile(string $filename, string $contentType = 'text/html; charset=utf-8'): never
 {
-    $path = __DIR__ . DIRECTORY_SEPARATOR . 'dashboard.html';
+    $path = __DIR__ . DIRECTORY_SEPARATOR . $filename;
     $html = file_get_contents($path);
     if ($html === false) {
-        respond(500, ['error' => 'dashboard_unavailable']);
+        respond(500, ['error' => 'page_unavailable']);
     }
 
-    header('Content-Type: text/html; charset=utf-8', true);
+    header('Content-Type: ' . $contentType, true);
     header('Cache-Control: no-cache');
     echo $html;
     exit;
